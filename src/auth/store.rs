@@ -53,6 +53,14 @@ impl AuthStore {
         let serialized = serde_json::to_vec_pretty(auth).map_err(|_| StoreError::Serialize)?;
         atomic_write(&self.path, &serialized)
     }
+
+    pub fn clear(&self) -> Result<(), StoreError> {
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err(StoreError::Persist),
+        }
+    }
 }
 
 pub fn resolve_auth_path(config: &AuthConfig) -> Result<PathBuf, StoreError> {

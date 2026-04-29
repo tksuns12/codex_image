@@ -141,6 +141,17 @@ pub enum AuthState {
     Invalid,
 }
 
+impl AuthState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotLoggedIn => "not_logged_in",
+            Self::Valid => "valid",
+            Self::ExpiredRefreshable => "expired_refreshable",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct JwtClaims {
     #[serde(default)]

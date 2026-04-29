@@ -115,3 +115,35 @@ fn diagnostics_unknown_fallback_is_stable() {
         "Re-run with supported commands or update the binary."
     );
 }
+
+#[test]
+fn diagnostics_auth_not_logged_in_is_auth_domain_recoverable() {
+    let err = CliError::AuthNotLoggedIn;
+
+    assert_eq!(err.exit_code(), ExitCode::Auth);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "auth.not_logged_in");
+    assert_eq!(json["error"]["message"], "not logged in");
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(
+        json["error"]["hint"],
+        "Run `codex-image login` to authenticate."
+    );
+}
+
+#[test]
+fn diagnostics_auth_expired_is_auth_domain_recoverable() {
+    let err = CliError::AuthExpired;
+
+    assert_eq!(err.exit_code(), ExitCode::Auth);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "auth.expired");
+    assert_eq!(json["error"]["message"], "auth access token expired");
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(
+        json["error"]["hint"],
+        "Run `codex-image login` to refresh local auth state."
+    );
+}

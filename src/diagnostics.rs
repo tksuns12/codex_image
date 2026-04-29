@@ -46,6 +46,12 @@ pub enum CliError {
     Config(#[from] ConfigError),
     #[error("auth state error")]
     AuthStore(#[from] StoreError),
+    #[error("auth required")]
+    AuthNotLoggedIn,
+    #[error("auth access token expired")]
+    AuthExpired,
+    #[error("auth state invalid")]
+    AuthInvalidState,
     #[error("device login error")]
     DeviceLogin(#[from] DeviceLoginError),
     #[error("login flow not implemented")]
@@ -81,6 +87,27 @@ impl CliError {
                 recoverable: true,
                 hint: "Check CODEX_IMAGE_* configuration values.",
                 exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::AuthNotLoggedIn => ErrorClassification {
+                code: "auth.not_logged_in",
+                message: "not logged in",
+                recoverable: true,
+                hint: "Run `codex-image login` to authenticate.",
+                exit_code: ExitCode::Auth,
+            },
+            Self::AuthExpired => ErrorClassification {
+                code: "auth.expired",
+                message: "auth access token expired",
+                recoverable: true,
+                hint: "Run `codex-image login` to refresh local auth state.",
+                exit_code: ExitCode::Auth,
+            },
+            Self::AuthInvalidState => ErrorClassification {
+                code: "auth.invalid_state",
+                message: "auth state error",
+                recoverable: false,
+                hint: "Run `codex-image login` to refresh local auth state.",
+                exit_code: ExitCode::Auth,
             },
             Self::AuthStore(StoreError::Parse) => ErrorClassification {
                 code: "auth.invalid_state",

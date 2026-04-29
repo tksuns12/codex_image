@@ -192,3 +192,37 @@ fn auth_store_resolve_from_config_constructor() {
     let store = AuthStore::from_config(&config).unwrap();
     assert_eq!(store.path(), temp.path().join("owned.json"));
 }
+
+#[test]
+fn auth_store_clear_is_idempotent_for_missing_file() {
+    let temp = TempDir::new().unwrap();
+    let store = AuthStore::new(temp.path().join("missing.json"));
+
+    store.clear().unwrap();
+    store.clear().unwrap();
+
+    assert!(!store.path().exists());
+}
+
+#[test]
+fn auth_store_clear_removes_only_owned_auth_file() {
+    let temp = TempDir::new().unwrap();
+    let owned_auth_path = temp.path().join("codex-image").join("auth.json");
+    let codex_sentinel_path = temp.path().join(".codex").join("auth.json");
+
+    fs::create_dir_all(codex_sentinel_path.parent().unwrap()).unwrap();
+    fs::write(&codex_sentinel_path, br#"{"access_token":"codex-sentinel"}"#).unwrap();
+
+    let store = AuthStore::new(owned_auth_path.clone());
+    let auth = PersistedAuth::sample_valid_for_tests("acct_123");
+    store.save(&auth).unwrap();
+    assert!(owned_auth_path.exists());
+
+    store.clear().unwrap();
+
+    assert!(!owned_auth_path.exists());
+    assert_eq!(
+        fs::read_to_string(&codex_sentinel_path).unwrap(),
+        r#"{"access_token":"codex-sentinel"}"#
+    );
+}
