@@ -61,10 +61,18 @@ pub enum ConfigError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
     use super::*;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
 
     #[test]
     fn rejects_invalid_auth_base_url() {
+        let _guard = env_lock();
         std::env::set_var(ENV_AUTH_BASE_URL, "::not-a-url::");
         let result = AuthConfig::from_env();
         std::env::remove_var(ENV_AUTH_BASE_URL);
@@ -79,6 +87,7 @@ mod tests {
 
     #[test]
     fn rejects_empty_auth_path_env() {
+        let _guard = env_lock();
         std::env::set_var(ENV_AUTH_FILE, "   ");
         let result = AuthConfig::from_env();
         std::env::remove_var(ENV_AUTH_FILE);

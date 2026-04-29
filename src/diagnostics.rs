@@ -1,3 +1,4 @@
+use crate::auth::device::DeviceLoginError;
 use crate::auth::store::StoreError;
 use crate::config::ConfigError;
 
@@ -7,6 +8,8 @@ pub enum CliError {
     Config(#[from] ConfigError),
     #[error("auth state error")]
     AuthStore(#[from] StoreError),
+    #[error("device login error")]
+    DeviceLogin(#[from] DeviceLoginError),
     #[error("login flow not implemented")]
     LoginNotImplemented,
 }
@@ -20,6 +23,7 @@ impl CliError {
             Self::AuthStore(StoreError::Parse) => "auth file parse error",
             Self::AuthStore(StoreError::Persist) => "auth file write error",
             Self::AuthStore(StoreError::Serialize) => "auth state serialization error",
+            Self::DeviceLogin(err) => err.redacted_message(),
             Self::LoginNotImplemented => "login flow not implemented",
         }
     }
