@@ -59,7 +59,10 @@ fn auth_lifecycle_get_access_token_returns_token_only_for_valid_auth() {
     let mut auth = PersistedAuth::new(
         "access-token-expected".to_string(),
         "refresh-token".to_string(),
-        fake_jwt("acct_123", (Utc::now() + TimeDelta::minutes(15)).timestamp()),
+        fake_jwt(
+            "acct_123",
+            (Utc::now() + TimeDelta::minutes(15)).timestamp(),
+        ),
     );
     assert_eq!(auth.populate_claim_metadata(), AuthState::Valid);
     store.save(&auth).unwrap();
@@ -81,7 +84,10 @@ fn auth_lifecycle_get_access_token_maps_missing_expired_invalid_and_parse_to_aut
     let mut expired_auth = PersistedAuth::new(
         "access-token".to_string(),
         "refresh-token".to_string(),
-        fake_jwt("acct_123", (Utc::now() - TimeDelta::minutes(15)).timestamp()),
+        fake_jwt(
+            "acct_123",
+            (Utc::now() - TimeDelta::minutes(15)).timestamp(),
+        ),
     );
     assert_eq!(
         expired_auth.populate_claim_metadata(),
@@ -119,6 +125,9 @@ fn auth_lifecycle_get_access_token_maps_missing_expired_invalid_and_parse_to_aut
 fn auth_lifecycle_auth_state_strings_are_stable() {
     assert_eq!(AuthState::NotLoggedIn.as_str(), "not_logged_in");
     assert_eq!(AuthState::Valid.as_str(), "valid");
-    assert_eq!(AuthState::ExpiredRefreshable.as_str(), "expired_refreshable");
+    assert_eq!(
+        AuthState::ExpiredRefreshable.as_str(),
+        "expired_refreshable"
+    );
     assert_eq!(AuthState::Invalid.as_str(), "invalid");
 }

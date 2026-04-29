@@ -172,3 +172,79 @@ async fn login_command_token_exchange_failure_keeps_owned_and_codex_auth_unchang
     let codex_after = fs::read(&codex_auth_path).unwrap();
     assert_eq!(codex_after, codex_sentinel);
 }
+
+#[tokio::test]
+async fn login_command_token_exchange_malformed_response_uses_response_contract_exit_code() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/accounts/deviceauth/usercode"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "device_auth_id": "dev_cli_789",
+            "user_code": "FAIL-0002",
+            "interval": "0",
+            "verification_uri": "https://example.test/activate"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/accounts/deviceauth/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "authorization_code": "auth-code-malformed",
+            "code_verifier": "verifier-malformed"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/oauth/token"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{not-json"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let temp = TempDir::new().unwrap();
+    let home_dir = temp.path().join("home");
+    let codex_auth_path = home_dir.join(".codex").join("auth.json");
+    fs::create_dir_all(codex_auth_path.parent().unwrap()).unwrap();
+    let codex_sentinel = b"codex-auth-sentinel-v3";
+    fs::write(&codex_auth_path, codex_sentinel).unwrap();
+
+    let owned_home = temp.path().join("owned");
+    fs::create_dir_all(&owned_home).unwrap();
+    let owned_auth_path = owned_home.join("auth.json");
+    let owned_before = b"owned-auth-before-v3";
+    fs::write(&owned_auth_path, owned_before).unwrap();
+
+    let mut cmd = Command::cargo_bin("codex-image").unwrap();
+    cmd.arg("login")
+        .env("HOME", &home_dir)
+        .env("CODEX_IMAGE_HOME", &owned_home)
+        .env("CODEX_IMAGE_AUTH_BASE_URL", server.uri())
+        .env("CODEX_IMAGE_CLIENT_ID", "client-from-test");
+
+    cmd.assert()
+        .code(6)
+        .stdout(predicate::str::contains("FAIL-0002"))
+        .stderr(predicate::str::contains("\"error\""))
+        .stderr(predicate::str::contains(
+            "\"code\":\"response_contract.oauth_token\"",
+        ))
+        .stderr(predicate::str::contains(
+            "\"message\":\"authentication service response did not match expected schema\"",
+        ))
+        .stderr(predicate::str::contains("\"recoverable\":false"))
+        .stderr(predicate::str::contains("auth-code-malformed").not())
+        .stderr(predicate::str::contains("verifier-malformed").not())
+        .stderr(predicate::str::contains("access-secret").not())
+        .stderr(predicate::str::contains("refresh-secret").not());
+
+    let owned_after = fs::read(&owned_auth_path).unwrap();
+    assert_eq!(owned_after, owned_before);
+
+    let codex_after = fs::read(&codex_auth_path).unwrap();
+    assert_eq!(codex_after, codex_sentinel);
+}

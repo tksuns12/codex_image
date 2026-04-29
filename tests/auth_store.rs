@@ -211,7 +211,11 @@ fn auth_store_clear_removes_only_owned_auth_file() {
     let codex_sentinel_path = temp.path().join(".codex").join("auth.json");
 
     fs::create_dir_all(codex_sentinel_path.parent().unwrap()).unwrap();
-    fs::write(&codex_sentinel_path, br#"{"access_token":"codex-sentinel"}"#).unwrap();
+    fs::write(
+        &codex_sentinel_path,
+        br#"{"access_token":"codex-sentinel"}"#,
+    )
+    .unwrap();
 
     let store = AuthStore::new(owned_auth_path.clone());
     let auth = PersistedAuth::sample_valid_for_tests("acct_123");
