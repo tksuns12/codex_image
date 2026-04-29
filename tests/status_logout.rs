@@ -154,3 +154,104 @@ fn logout_is_idempotent_and_keeps_codex_sentinel() {
     assert_eq!(second_json["status"], "not_logged_in");
     assert_eq!(fs::read(&codex_auth_path).unwrap(), codex_sentinel);
 }
+
+#[test]
+fn status_json_auth_file_override_takes_precedence_over_home() {
+    let temp = TempDir::new().unwrap();
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&home_dir).unwrap();
+
+    // If status accidentally uses CODEX_IMAGE_HOME, this malformed auth would force `invalid`.
+    fs::write(home_dir.join("auth.json"), "{not-json").unwrap();
+
+    let override_path = temp.path().join("override-auth.json");
+    let valid_jwt = fake_jwt(
+        "acct_override",
+        (Utc::now() + Duration::minutes(15)).timestamp(),
+    );
+
+    let override_body = serde_json::json!({
+        "version": 1,
+        "auth_type": "oauth",
+        "access_token": "override-access",
+        "refresh_token": "override-refresh",
+        "id_token": valid_jwt,
+        "account_id": "acct_override",
+        "access_token_expires_at": Utc::now().to_rfc3339(),
+        "last_refresh": Utc::now().to_rfc3339(),
+    });
+    fs::write(
+        &override_path,
+        serde_json::to_vec_pretty(&override_body).unwrap(),
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("status")
+        .arg("--json")
+        .env("CODEX_IMAGE_HOME", &home_dir)
+        .env("CODEX_IMAGE_AUTH_FILE", &override_path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["status"], "valid");
+    assert_eq!(json["account_id"], "acct_override");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("override-access"));
+    assert!(!stdout.contains("override-refresh"));
+}
+
+#[test]
+fn logout_honors_auth_file_override_and_preserves_codex_sentinel() {
+    let temp = TempDir::new().unwrap();
+
+    let home_dir = temp.path().join("home");
+    let codex_auth_path = home_dir.join(".codex").join("auth.json");
+    fs::create_dir_all(codex_auth_path.parent().unwrap()).unwrap();
+    let codex_sentinel = br#"{"access_token":"codex-sentinel"}"#;
+    fs::write(&codex_auth_path, codex_sentinel).unwrap();
+
+    let override_path = temp.path().join("override-auth.json");
+    let valid_jwt = fake_jwt(
+        "acct_override",
+        (Utc::now() + Duration::minutes(15)).timestamp(),
+    );
+
+    let override_body = serde_json::json!({
+        "version": 1,
+        "auth_type": "oauth",
+        "access_token": "override-access",
+        "refresh_token": "override-refresh",
+        "id_token": valid_jwt,
+        "account_id": "acct_override",
+        "access_token_expires_at": Utc::now().to_rfc3339(),
+        "last_refresh": Utc::now().to_rfc3339(),
+    });
+    fs::write(
+        &override_path,
+        serde_json::to_vec_pretty(&override_body).unwrap(),
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("logout")
+        .env("HOME", &home_dir)
+        .env("CODEX_IMAGE_AUTH_FILE", &override_path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["logged_out"], true);
+    assert_eq!(json["status"], "not_logged_in");
+    assert!(!override_path.exists());
+    assert_eq!(fs::read(&codex_auth_path).unwrap(), codex_sentinel);
+}

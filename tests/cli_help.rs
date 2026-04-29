@@ -33,7 +33,8 @@ fn cli_help_status_without_json_flag_is_usage_error() {
 
     cmd.assert()
         .code(2)
-        .stderr(predicate::str::contains("--json"));
+        .stderr(predicate::str::contains("--json"))
+        .stderr(predicate::str::contains("\"error\":").not());
 }
 
 #[test]
