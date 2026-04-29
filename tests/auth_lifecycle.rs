@@ -122,6 +122,90 @@ fn auth_lifecycle_get_access_token_maps_missing_expired_invalid_and_parse_to_aut
 }
 
 #[test]
+fn auth_lifecycle_status_for_cli_reports_expired_refreshable_for_expired_auth() {
+    let temp = TempDir::new().unwrap();
+    let store = AuthStore::new(temp.path().join("expired-status.json"));
+
+    let mut auth = PersistedAuth::new(
+        "access-token-expired".to_string(),
+        "refresh-token-expired".to_string(),
+        fake_jwt(
+            "acct_expired",
+            (Utc::now() - TimeDelta::minutes(5)).timestamp(),
+        ),
+    );
+    assert_eq!(
+        auth.populate_claim_metadata(),
+        AuthState::ExpiredRefreshable
+    );
+    store.save(&auth).unwrap();
+
+    let status = status_for_cli(&store).unwrap();
+
+    assert_eq!(status.status, "expired_refreshable");
+    assert_eq!(status.account_id.as_deref(), Some("acct_expired"));
+    assert!(status.access_token_expires_at.is_some());
+}
+
+#[test]
+fn auth_lifecycle_get_access_token_rejects_empty_or_missing_auth_fields() {
+    let temp = TempDir::new().unwrap();
+
+    let empty_fields_store = AuthStore::new(temp.path().join("empty-fields.json"));
+    let mut empty_fields_auth = PersistedAuth::new(
+        "   ".to_string(),
+        "refresh-token".to_string(),
+        fake_jwt("acct_empty", (Utc::now() + TimeDelta::minutes(5)).timestamp()),
+    );
+    assert_eq!(empty_fields_auth.populate_claim_metadata(), AuthState::Valid);
+    empty_fields_store.save(&empty_fields_auth).unwrap();
+
+    let empty_fields_error = get_access_token_or_error(&empty_fields_store).unwrap_err();
+    assert!(matches!(empty_fields_error, CliError::AuthInvalidState));
+    assert_eq!(empty_fields_error.exit_code(), ExitCode::Auth);
+
+    let empty_json_store = AuthStore::new(temp.path().join("empty-json.json"));
+    fs::write(empty_json_store.path(), "{}").unwrap();
+
+    let empty_json_status = status_for_cli(&empty_json_store).unwrap();
+    assert_eq!(empty_json_status.status, "invalid");
+
+    let empty_json_error = get_access_token_or_error(&empty_json_store).unwrap_err();
+    assert!(matches!(empty_json_error, CliError::AuthInvalidState));
+    assert_eq!(empty_json_error.exit_code(), ExitCode::Auth);
+}
+
+#[test]
+fn auth_lifecycle_redacts_tokens_in_debug_and_error_envelopes() {
+    let access_secret = "access-secret-should-not-leak";
+    let refresh_secret = "refresh-secret-should-not-leak";
+    let id_secret = "id-secret-should-not-leak";
+
+    let auth = PersistedAuth::new(
+        access_secret.to_string(),
+        refresh_secret.to_string(),
+        id_secret.to_string(),
+    );
+    let debug = format!("{auth:?}");
+
+    assert!(!debug.contains(access_secret));
+    assert!(!debug.contains(refresh_secret));
+    assert!(!debug.contains(id_secret));
+    assert!(debug.contains("[REDACTED]"));
+
+    let error = CliError::AuthInvalidState;
+    let envelope_json = serde_json::to_string(&error.error_envelope()).unwrap();
+    let error_debug = format!("{error:?}");
+    let error_display = error.to_string();
+
+    assert!(!envelope_json.contains(access_secret));
+    assert!(!envelope_json.contains(refresh_secret));
+    assert!(!envelope_json.contains(id_secret));
+    assert!(!error_debug.contains(access_secret));
+    assert!(!error_display.contains(access_secret));
+}
+
+#[test]
 fn auth_lifecycle_auth_state_strings_are_stable() {
     assert_eq!(AuthState::NotLoggedIn.as_str(), "not_logged_in");
     assert_eq!(AuthState::Valid.as_str(), "valid");
