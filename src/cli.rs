@@ -1,5 +1,9 @@
-use clap::{Parser, Subcommand};
+use std::io;
 
+use clap::{Parser, Subcommand};
+use reqwest::Client;
+
+use crate::auth::{login_device_code, AuthStore, DeviceLoginPollPolicy};
 use crate::config::AuthConfig;
 use crate::diagnostics::CliError;
 
@@ -36,9 +40,19 @@ pub async fn run() -> i32 {
 
 async fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.command {
-        Commands::Login => {
-            let _ = AuthConfig::from_env()?;
-            Ok(())
-        }
+        Commands::Login => login().await,
     }
+}
+
+async fn login() -> Result<(), CliError> {
+    let config = AuthConfig::from_env()?;
+    let auth_store = AuthStore::from_config(&config)?;
+    let http_client = Client::new();
+    let poll_policy = DeviceLoginPollPolicy::production();
+
+    let auth = login_device_code(&config, &http_client, &poll_policy, io::stdout()).await?;
+    auth_store.save(&auth)?;
+
+    println!("Login successful.");
+    Ok(())
 }
