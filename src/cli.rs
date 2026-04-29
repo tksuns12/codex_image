@@ -32,8 +32,12 @@ pub async fn run() -> i32 {
     match dispatch(cli).await {
         Ok(()) => 0,
         Err(err) => {
-            eprintln!("{}", err.redacted_message());
-            1
+            let envelope = err.error_envelope();
+            let line = serde_json::to_string(&envelope).unwrap_or_else(|_| {
+                "{\"error\":{\"code\":\"unknown\",\"message\":\"unexpected failure\",\"recoverable\":false,\"hint\":\"Re-run with supported commands or update the binary.\"}}".to_string()
+            });
+            eprintln!("{line}");
+            err.exit_code().as_i32()
         }
     }
 }

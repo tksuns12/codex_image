@@ -151,11 +151,18 @@ async fn login_command_token_exchange_failure_keeps_owned_and_codex_auth_unchang
         .env("CODEX_IMAGE_CLIENT_ID", "client-from-test");
 
     cmd.assert()
-        .failure()
+        .code(4)
         .stdout(predicate::str::contains("FAIL-0001"))
         .stdout(predicate::str::contains("access-secret").not())
         .stdout(predicate::str::contains("refresh-secret").not())
-        .stderr(predicate::str::contains("auth token exchange error"))
+        .stderr(predicate::str::contains("\"error\""))
+        .stderr(predicate::str::contains(
+            "\"code\":\"api.auth_service_request_failed\"",
+        ))
+        .stderr(predicate::str::contains(
+            "\"message\":\"authentication service request failed\"",
+        ))
+        .stderr(predicate::str::contains("\"recoverable\":true"))
         .stderr(predicate::str::contains("access-secret").not())
         .stderr(predicate::str::contains("refresh-secret").not());
 

@@ -19,7 +19,10 @@ fn diagnostics_config_error_maps_to_usage_config_exit_and_shape() {
     assert_eq!(json["error"]["code"], "config.invalid");
     assert_eq!(json["error"]["message"], "configuration error");
     assert_eq!(json["error"]["recoverable"], true);
-    assert_eq!(json["error"]["hint"], "Check CODEX_IMAGE_* configuration values.");
+    assert_eq!(
+        json["error"]["hint"],
+        "Check CODEX_IMAGE_* configuration values."
+    );
 
     let rendered = serde_json::to_string(&json).unwrap();
     assert!(!rendered.contains("CODEX_IMAGE_AUTH_BASE_URL"));
@@ -35,7 +38,10 @@ fn diagnostics_store_parse_error_is_redacted_auth_domain() {
     assert_eq!(json["error"]["code"], "auth.invalid_state");
     assert_eq!(json["error"]["message"], "auth state error");
     assert_eq!(json["error"]["recoverable"], false);
-    assert_eq!(json["error"]["hint"], "Run `codex-image login` to refresh local auth state.");
+    assert_eq!(
+        json["error"]["hint"],
+        "Run `codex-image login` to refresh local auth state."
+    );
 }
 
 #[test]
@@ -48,7 +54,10 @@ fn diagnostics_store_persist_error_maps_to_filesystem() {
     assert_eq!(json["error"]["code"], "filesystem.auth_write_failed");
     assert_eq!(json["error"]["message"], "auth state error");
     assert_eq!(json["error"]["recoverable"], true);
-    assert_eq!(json["error"]["hint"], "Ensure the auth directory is writable and retry.");
+    assert_eq!(
+        json["error"]["hint"],
+        "Ensure the auth directory is writable and retry."
+    );
 }
 
 #[test]
@@ -59,7 +68,10 @@ fn diagnostics_device_timeout_maps_to_api_recoverable() {
 
     let json = parse_envelope(&err);
     assert_eq!(json["error"]["code"], "api.auth_timeout");
-    assert_eq!(json["error"]["message"], "authentication service request failed");
+    assert_eq!(
+        json["error"]["message"],
+        "authentication service request failed"
+    );
     assert_eq!(json["error"]["recoverable"], true);
     assert_eq!(json["error"]["hint"], "Retry login in a moment.");
 }
@@ -72,7 +84,10 @@ fn diagnostics_device_contract_error_maps_to_response_contract_without_raw_body(
 
     let json = parse_envelope(&err);
     assert_eq!(json["error"]["code"], "response_contract.oauth_token");
-    assert_eq!(json["error"]["message"], "authentication service response did not match expected schema");
+    assert_eq!(
+        json["error"]["message"],
+        "authentication service response did not match expected schema"
+    );
     assert_eq!(json["error"]["recoverable"], false);
     assert_eq!(
         json["error"]["hint"],
@@ -95,5 +110,8 @@ fn diagnostics_unknown_fallback_is_stable() {
     assert_eq!(json["error"]["code"], "unknown");
     assert_eq!(json["error"]["message"], "unexpected failure");
     assert_eq!(json["error"]["recoverable"], false);
-    assert_eq!(json["error"]["hint"], "Re-run with supported commands or update the binary.");
+    assert_eq!(
+        json["error"]["hint"],
+        "Re-run with supported commands or update the binary."
+    );
 }
