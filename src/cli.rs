@@ -79,7 +79,7 @@ async fn login() -> Result<(), CliError> {
 }
 
 fn status(_json: bool) -> Result<(), CliError> {
-    let config = AuthConfig::from_env()?;
+    let config = AuthConfig::from_env_for_store()?;
     let auth_store = AuthStore::from_config(&config)?;
     let status = status_for_cli(&auth_store)?;
 
@@ -91,7 +91,7 @@ fn status(_json: bool) -> Result<(), CliError> {
 }
 
 fn logout() -> Result<(), CliError> {
-    let config = AuthConfig::from_env()?;
+    let config = AuthConfig::from_env_for_store()?;
     let auth_store = AuthStore::from_config(&config)?;
     auth_store.clear()?;
 

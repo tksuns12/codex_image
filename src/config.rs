@@ -42,6 +42,19 @@ impl AuthConfig {
             client_id,
         })
     }
+
+    pub fn from_env_for_store() -> Result<Self, ConfigError> {
+        let auth_file = read_non_empty_path(ENV_AUTH_FILE)?;
+        let home_dir = read_non_empty_path(ENV_HOME)?;
+
+        Ok(Self {
+            auth_file,
+            home_dir,
+            auth_base_url: Url::parse(DEFAULT_AUTH_BASE_URL)
+                .expect("default auth base URL must be valid"),
+            client_id: DEFAULT_CLIENT_ID.to_string(),
+        })
+    }
 }
 
 fn read_non_empty_path(key: &'static str) -> Result<Option<PathBuf>, ConfigError> {
@@ -96,5 +109,19 @@ mod tests {
             result,
             Err(ConfigError::InvalidValue { key: ENV_AUTH_FILE })
         ));
+    }
+
+    #[test]
+    fn store_config_ignores_login_only_env_values() {
+        let _guard = env_lock();
+        std::env::set_var(ENV_AUTH_BASE_URL, "::not-a-url::");
+        std::env::set_var(ENV_CLIENT_ID, "   ");
+
+        let result = AuthConfig::from_env_for_store();
+
+        std::env::remove_var(ENV_AUTH_BASE_URL);
+        std::env::remove_var(ENV_CLIENT_ID);
+
+        assert!(result.is_ok());
     }
 }

@@ -255,3 +255,47 @@ fn logout_honors_auth_file_override_and_preserves_codex_sentinel() {
     assert!(!override_path.exists());
     assert_eq!(fs::read(&codex_auth_path).unwrap(), codex_sentinel);
 }
+
+#[test]
+fn status_json_ignores_invalid_login_env_when_reading_store() {
+    let temp = TempDir::new().unwrap();
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("status")
+        .arg("--json")
+        .env("CODEX_IMAGE_HOME", temp.path())
+        .env("CODEX_IMAGE_AUTH_BASE_URL", "::not-a-url::")
+        .env("CODEX_IMAGE_CLIENT_ID", "   ")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["status"], "not_logged_in");
+}
+
+#[test]
+fn logout_ignores_invalid_login_env_when_clearing_store() {
+    let temp = TempDir::new().unwrap();
+    let owned_home = temp.path().join("owned");
+    fs::create_dir_all(&owned_home).unwrap();
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("logout")
+        .env("CODEX_IMAGE_HOME", &owned_home)
+        .env("CODEX_IMAGE_AUTH_BASE_URL", "::not-a-url::")
+        .env("CODEX_IMAGE_CLIENT_ID", "   ")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["logged_out"], true);
+    assert_eq!(json["status"], "not_logged_in");
+}
