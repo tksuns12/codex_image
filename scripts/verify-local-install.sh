@@ -6,7 +6,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PHASE="init"
 install_root=""
-auth_home=""
 temp_home=""
 
 log_phase() {
@@ -17,9 +16,6 @@ cleanup() {
   local rc=$?
   if [[ -n "$install_root" && -d "$install_root" ]]; then
     rm -rf "$install_root"
-  fi
-  if [[ -n "$auth_home" && -d "$auth_home" ]]; then
-    rm -rf "$auth_home"
   fi
   if [[ -n "$temp_home" && -d "$temp_home" ]]; then
     rm -rf "$temp_home"
@@ -36,12 +32,8 @@ trap cleanup EXIT
 
 PHASE="temp-filesystem"
 install_root="$(mktemp -d -t codex-image-install.XXXXXX)"
-auth_home="$(mktemp -d -t codex-image-auth.XXXXXX)"
 temp_home="$(mktemp -d -t codex-image-home.XXXXXX)"
-mkdir -p "$temp_home/.codex"
-printf '{"sentinel":"unchanged"}\n' > "$temp_home/.codex/auth.json"
-codex_auth_before="$(shasum -a 256 "$temp_home/.codex/auth.json" | awk '{print $1}')"
-log_phase "created isolated install/auth/home roots"
+log_phase "created isolated install/home roots"
 
 PHASE="cargo-install"
 log_phase "running cargo install --path . --root <temp> --force"
@@ -54,32 +46,26 @@ if [[ ! -x "$binary" ]]; then
   exit 1
 fi
 log_phase "executing codex-image --help"
-"$binary" --help >/dev/null
+HOME="$temp_home" "$binary" --help >/dev/null
 
-PHASE="status-json"
-log_phase "executing isolated status --json"
-status_json="$({
-  HOME="$temp_home" CODEX_IMAGE_HOME="$auth_home" "$binary" status --json
-})"
+PHASE="generate-help"
+log_phase "executing codex-image generate --help"
+HOME="$temp_home" "$binary" generate --help | grep -q -- '--out'
 
-PHASE="json-parse"
-parsed_status="$(printf '%s' "$status_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); status=data.get("status");
-if status is None:
-    raise SystemExit("missing status field")
-print(status)')"
-if [[ "$parsed_status" != "not_logged_in" ]]; then
-  echo "[verify-local-install] ERROR phase=$PHASE expected status=not_logged_in got status=$parsed_status" >&2
+PHASE="removed-auth-commands"
+log_phase "confirming removed auth lifecycle commands are unavailable"
+if HOME="$temp_home" "$binary" status --json >/dev/null 2>&1; then
+  echo '[verify-local-install] ERROR phase=removed-auth-commands status unexpectedly succeeded' >&2
   exit 1
 fi
-log_phase "validated status JSON contract (status=not_logged_in)"
-
-PHASE="codex-auth-preservation"
-codex_auth_after="$(shasum -a 256 "$temp_home/.codex/auth.json" | awk '{print $1}')"
-if [[ "$codex_auth_before" != "$codex_auth_after" ]]; then
-  echo "[verify-local-install] ERROR phase=$PHASE ~/.codex/auth.json changed during verification" >&2
+if HOME="$temp_home" "$binary" login --help >/dev/null 2>&1; then
+  echo '[verify-local-install] ERROR phase=removed-auth-commands login unexpectedly succeeded' >&2
   exit 1
 fi
-log_phase "confirmed ~/.codex/auth.json preservation in isolated HOME"
+if HOME="$temp_home" "$binary" logout --help >/dev/null 2>&1; then
+  echo '[verify-local-install] ERROR phase=removed-auth-commands logout unexpectedly succeeded' >&2
+  exit 1
+fi
 
 PHASE="complete"
 log_phase "local install verification complete"

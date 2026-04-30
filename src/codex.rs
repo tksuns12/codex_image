@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::config::ENV_CODEX_BIN;
+use crate::config::{read_non_empty_env_path, ENV_CODEX_BIN};
 use crate::diagnostics::CliError;
 
 const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
@@ -129,7 +129,10 @@ fn parse_final_message(message: &str) -> Result<CodexFinalMessage, CliError> {
 
 fn resolve_codex_binary() -> Result<PathBuf, CliError> {
     if let Some(path) = read_non_empty_env_path(ENV_CODEX_BIN)? {
-        return Ok(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(CliError::CodexCliUnavailable);
     }
 
     if let Some(path) = find_on_path("codex") {
@@ -141,23 +144,6 @@ fn resolve_codex_binary() -> Result<PathBuf, CliError> {
     }
 
     Err(CliError::CodexCliUnavailable)
-}
-
-fn read_non_empty_env_path(key: &'static str) -> Result<Option<PathBuf>, CliError> {
-    match env::var(key) {
-        Ok(raw) if raw.trim().is_empty() => {
-            Err(CliError::Config(crate::config::ConfigError::InvalidValue {
-                key,
-            }))
-        }
-        Ok(raw) => Ok(Some(PathBuf::from(raw))),
-        Err(env::VarError::NotPresent) => Ok(None),
-        Err(env::VarError::NotUnicode(_)) => {
-            Err(CliError::Config(crate::config::ConfigError::InvalidValue {
-                key,
-            }))
-        }
-    }
 }
 
 fn find_on_path(binary_name: &str) -> Option<PathBuf> {

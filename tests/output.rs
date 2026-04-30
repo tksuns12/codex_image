@@ -1,43 +1,21 @@
 use std::fs;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use codex_image::diagnostics::CliError;
-use codex_image::openai::{GeneratedImage, ImageGenerationResponse, ImageGenerationUsage};
-use codex_image::output::write_generation_output;
+use codex_image::output::write_generation_output_from_files;
 use tempfile::{tempdir, NamedTempFile};
-
-fn image_entry(bytes: &[u8], output_format: Option<&str>) -> GeneratedImage {
-    GeneratedImage {
-        b64_json: STANDARD.encode(bytes),
-        revised_prompt: Some("revised prompt".to_string()),
-        size: Some("1024x1024".to_string()),
-        quality: Some("high".to_string()),
-        background: Some("transparent".to_string()),
-        output_format: output_format.map(ToString::to_string),
-    }
-}
-
-fn response_with_images(images: Vec<GeneratedImage>) -> ImageGenerationResponse {
-    ImageGenerationResponse {
-        created: 1_746_000_123,
-        data: images,
-        usage: Some(ImageGenerationUsage {
-            total_tokens: Some(7),
-            input_tokens: Some(5),
-            output_tokens: Some(2),
-        }),
-    }
-}
 
 #[test]
 fn output_writes_single_image_and_manifest_with_expected_contract() {
     let temp = tempdir().expect("tempdir should create");
+    let source_dir = temp.path().join("source");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source = source_dir.join("generated.png");
+    fs::write(&source, b"png-bytes").unwrap();
     let out_dir = temp.path().join("images");
 
-    let response = response_with_images(vec![image_entry(b"png-bytes", None)]);
-
-    let manifest = write_generation_output("sunrise", "gpt-image-2", &out_dir, &response)
-        .expect("output write should succeed");
+    let manifest =
+        write_generation_output_from_files("sunrise", "gpt-image-2", &out_dir, &[source])
+            .expect("output write should succeed");
 
     let image_path = out_dir.join("image-0001.png");
     let manifest_path = out_dir.join("manifest.json");
@@ -54,8 +32,6 @@ fn output_writes_single_image_and_manifest_with_expected_contract() {
     assert_eq!(manifest.images[0].byte_count, 9);
     assert_eq!(manifest.images[0].path, image_path.to_string_lossy());
     assert_eq!(manifest.manifest_path, manifest_path.to_string_lossy());
-    assert_eq!(manifest.response.created, 1_746_000_123);
-    assert_eq!(manifest.response.usage.total_tokens, Some(7));
 
     let manifest_text = fs::read_to_string(&manifest_path).unwrap();
     let manifest_json: serde_json::Value = serde_json::from_str(&manifest_text).unwrap();
@@ -70,15 +46,19 @@ fn output_writes_single_image_and_manifest_with_expected_contract() {
 #[test]
 fn output_writes_multiple_images_with_deterministic_filenames() {
     let temp = tempdir().expect("tempdir should create");
+    let source_dir = temp.path().join("source");
+    fs::create_dir_all(&source_dir).unwrap();
+    let sources = [
+        source_dir.join("first.png"),
+        source_dir.join("second.webp"),
+        source_dir.join("third.jpeg"),
+    ];
+    fs::write(&sources[0], b"first").unwrap();
+    fs::write(&sources[1], b"second").unwrap();
+    fs::write(&sources[2], b"third").unwrap();
     let out_dir = temp.path().join("images");
 
-    let response = response_with_images(vec![
-        image_entry(b"first", Some("png")),
-        image_entry(b"second", Some("webp")),
-        image_entry(b"third", Some("jpeg")),
-    ]);
-
-    let manifest = write_generation_output("multi", "gpt-image-2", &out_dir, &response)
+    let manifest = write_generation_output_from_files("multi", "gpt-image-2", &out_dir, &sources)
         .expect("output write should succeed");
 
     let expected = [
@@ -95,21 +75,21 @@ fn output_writes_multiple_images_with_deterministic_filenames() {
 }
 
 #[test]
-fn output_manifest_redacts_b64_and_token_sentinels() {
+fn output_manifest_redacts_source_path_and_token_sentinels() {
     let temp = tempdir().expect("tempdir should create");
+    let source_dir = temp.path().join("source-access-token-Bearer");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source = source_dir.join("generated-b64_json.png");
+    fs::write(
+        &source,
+        b"binary access-token refresh-token id-token Bearer b64_json",
+    )
+    .unwrap();
     let out_dir = temp.path().join("images");
 
-    let response = response_with_images(vec![GeneratedImage {
-        b64_json: STANDARD.encode(b"binary access-token refresh-token id-token Bearer b64_json"),
-        revised_prompt: Some("revised access-token Bearer".to_string()),
-        size: None,
-        quality: None,
-        background: None,
-        output_format: None,
-    }]);
-
-    let manifest = write_generation_output("safe prompt", "gpt-image-2", &out_dir, &response)
-        .expect("output write should succeed");
+    let manifest =
+        write_generation_output_from_files("safe prompt", "gpt-image-2", &out_dir, &[source])
+            .expect("output write should succeed");
 
     let manifest_text = fs::read_to_string(out_dir.join("manifest.json")).unwrap();
     let json_text = serde_json::to_string(&manifest).unwrap();
@@ -133,40 +113,11 @@ fn output_manifest_redacts_b64_and_token_sentinels() {
 }
 
 #[test]
-fn output_invalid_base64_maps_to_response_contract_error() {
-    let temp = tempdir().expect("tempdir should create");
-    let out_dir = temp.path().join("images");
-
-    let response = response_with_images(vec![GeneratedImage {
-        b64_json: "%%% not-base64 %%%".to_string(),
-        revised_prompt: None,
-        size: None,
-        quality: None,
-        background: None,
-        output_format: None,
-    }]);
-
-    let err = write_generation_output("bad", "gpt-image-2", &out_dir, &response)
-        .expect_err("invalid base64 must fail");
-
-    assert!(matches!(
-        err,
-        CliError::ImageGenerationResponseContract { .. }
-    ));
-    assert_eq!(
-        err.error_envelope().error.code,
-        "response_contract.image_generation"
-    );
-}
-
-#[test]
 fn output_empty_image_list_maps_to_response_contract_error() {
     let temp = tempdir().expect("tempdir should create");
     let out_dir = temp.path().join("images");
 
-    let response = response_with_images(vec![]);
-
-    let err = write_generation_output("empty", "gpt-image-2", &out_dir, &response)
+    let err = write_generation_output_from_files("empty", "gpt-image-2", &out_dir, &[])
         .expect_err("empty image list must fail");
 
     assert!(matches!(
@@ -176,13 +127,29 @@ fn output_empty_image_list_maps_to_response_contract_error() {
 }
 
 #[test]
+fn output_missing_source_maps_to_response_contract_error() {
+    let temp = tempdir().expect("tempdir should create");
+    let out_dir = temp.path().join("images");
+    let missing = temp.path().join("missing.png");
+
+    let err = write_generation_output_from_files("missing", "gpt-image-2", &out_dir, &[missing])
+        .expect_err("missing source must fail");
+
+    assert!(matches!(
+        err,
+        CliError::ImageGenerationResponseContract { .. }
+    ));
+}
+
+#[test]
 fn output_existing_file_target_maps_to_filesystem_error() {
+    let temp = tempdir().expect("tempdir should create");
+    let source = temp.path().join("source.png");
+    fs::write(&source, b"bytes").unwrap();
     let file = NamedTempFile::new().expect("file should create");
     let out_path = file.path();
 
-    let response = response_with_images(vec![image_entry(b"bytes", None)]);
-
-    let err = write_generation_output("prompt", "gpt-image-2", out_path, &response)
+    let err = write_generation_output_from_files("prompt", "gpt-image-2", out_path, &[source])
         .expect_err("existing file path should fail");
 
     assert!(matches!(

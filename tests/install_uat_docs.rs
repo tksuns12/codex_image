@@ -1,5 +1,5 @@
 #[test]
-fn readme_covers_install_usage_and_uat_discoverability() {
+fn readme_covers_install_usage_and_codex_backend() {
     let readme = include_str!("../README.md");
 
     assert!(
@@ -11,56 +11,69 @@ fn readme_covers_install_usage_and_uat_discoverability() {
         "README must name the binary"
     );
     assert!(
-        readme.contains("status --json"),
-        "README must document machine-readable status contract"
+        readme.contains("Codex CLI") || readme.contains("Codex installation"),
+        "README must document the Codex dependency"
     );
     assert!(
         readme.contains("generate"),
         "README must describe generate usage"
     );
     assert!(
-        readme.contains("docs/uat-live-smoke.md"),
-        "README must link to the live UAT runbook"
+        readme.contains("CODEX_IMAGE_CODEX_BIN"),
+        "README must document Codex binary override"
+    );
+    assert!(
+        !readme.contains("CODEX_IMAGE_API_BASE_URL")
+            && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
+            && !readme.contains("status --json")
+            && !readme.contains("codex-image login"),
+        "README must not document removed URL/auth surfaces"
     );
 }
 
 #[test]
-fn scripts_document_live_guard_and_isolated_auth_home_contract() {
+fn scripts_document_codex_backend_and_live_guard() {
     let verify_local_install = include_str!("../scripts/verify-local-install.sh");
     let uat_live_smoke = include_str!("../scripts/uat-live-smoke.sh");
 
     assert!(
-        verify_local_install.contains("CODEX_IMAGE_HOME"),
-        "verify-local-install script must use isolated CODEX_IMAGE_HOME"
-    );
-    assert!(
-        uat_live_smoke.contains("CODEX_IMAGE_HOME"),
-        "live UAT script must use isolated CODEX_IMAGE_HOME"
+        verify_local_install.contains("generate --help"),
+        "verify-local-install script must validate generate help"
     );
     assert!(
         uat_live_smoke.contains("CODEX_IMAGE_RUN_LIVE=1"),
         "live UAT script must require explicit CODEX_IMAGE_RUN_LIVE=1 opt-in"
     );
+    assert!(
+        uat_live_smoke.contains("CODEX_IMAGE_CODEX_BIN"),
+        "live UAT script must support Codex binary override"
+    );
+    assert!(
+        !uat_live_smoke.contains("CODEX_IMAGE_API_BASE_URL")
+            && !uat_live_smoke.contains("CODEX_IMAGE_AUTH_BASE_URL")
+            && !uat_live_smoke.contains("status --json")
+            && !uat_live_smoke.contains(" login"),
+        "live UAT script must not depend on removed URL/auth surfaces"
+    );
 }
 
 #[test]
-fn uat_doc_warns_about_codex_auth_preservation_and_trusted_bases() {
+fn uat_doc_describes_codex_only_backend() {
     let runbook = include_str!("../docs/uat-live-smoke.md");
 
     assert!(
-        runbook.contains("$HOME/.codex/auth.json"),
-        "runbook must mention Codex CLI auth file preservation"
+        runbook.contains("Codex") && runbook.contains("generate"),
+        "runbook must document Codex-backed generation"
     );
     assert!(
-        runbook.contains("CODEX_IMAGE_AUTH_BASE_URL"),
-        "runbook must document custom auth base trust boundary"
+        runbook.contains("CODEX_IMAGE_CODEX_BIN"),
+        "runbook must document Codex binary override"
     );
     assert!(
-        runbook.contains("CODEX_IMAGE_API_BASE_URL"),
-        "runbook must document custom API base trust boundary"
-    );
-    assert!(
-        runbook.contains("trusted hosts") || runbook.contains("trusted endpoints"),
-        "runbook must warn that custom bases are trusted-only"
+        !runbook.contains("CODEX_IMAGE_AUTH_BASE_URL")
+            && !runbook.contains("CODEX_IMAGE_API_BASE_URL")
+            && !runbook.contains("status --json")
+            && !runbook.contains("OAuth"),
+        "runbook must not document removed URL/auth surfaces"
     );
 }
