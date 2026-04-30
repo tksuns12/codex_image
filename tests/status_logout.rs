@@ -65,9 +65,10 @@ fn status_json_valid_expired_and_invalid_contracts() {
 
     let valid_json: Value = serde_json::from_slice(&valid_output.stdout).unwrap();
     assert_eq!(valid_json["status"], "valid");
-    assert_eq!(valid_json["account_id"], "acct_cli_status");
+    assert!(valid_json.get("account_id").is_none());
 
     let valid_stdout = String::from_utf8_lossy(&valid_output.stdout);
+    assert!(!valid_stdout.contains("acct_cli_status"));
     assert!(!valid_stdout.contains("access-secret"));
     assert!(!valid_stdout.contains("refresh-secret"));
     assert!(!valid_stdout.contains("id_token"));
@@ -90,6 +91,8 @@ fn status_json_valid_expired_and_invalid_contracts() {
 
     let expired_json: Value = serde_json::from_slice(&expired_output.stdout).unwrap();
     assert_eq!(expired_json["status"], "expired_refreshable");
+    let expired_stdout = String::from_utf8_lossy(&expired_output.stdout);
+    assert!(!expired_stdout.contains("acct_cli_status"));
 
     fs::write(temp.path().join("auth.json"), "{not-json").unwrap();
 
@@ -200,9 +203,10 @@ fn status_json_auth_file_override_takes_precedence_over_home() {
 
     let json: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(json["status"], "valid");
-    assert_eq!(json["account_id"], "acct_override");
+    assert!(json.get("account_id").is_none());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("acct_override"));
     assert!(!stdout.contains("override-access"));
     assert!(!stdout.contains("override-refresh"));
 }

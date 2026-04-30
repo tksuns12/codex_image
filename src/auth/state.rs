@@ -34,6 +34,10 @@ impl PersistedAuth {
     }
 
     pub fn classify(&self, now: DateTime<Utc>) -> AuthState {
+        if self.version != AUTH_VERSION || self.auth_type != "oauth" {
+            return AuthState::Invalid;
+        }
+
         if self.access_token.trim().is_empty() || self.refresh_token.trim().is_empty() {
             return AuthState::Invalid;
         }
@@ -53,13 +57,17 @@ impl PersistedAuth {
             None => return AuthState::Invalid,
         };
 
-        if self.account_id.is_none() {
-            if let Some(account_id) = id_claims.account_id.or(id_claims.sub) {
-                if account_id.trim().is_empty() {
+        match &self.account_id {
+            Some(account_id) if account_id.trim().is_empty() => return AuthState::Invalid,
+            Some(_) => {}
+            None => {
+                if let Some(account_id) = id_claims.account_id.or(id_claims.sub) {
+                    if account_id.trim().is_empty() {
+                        return AuthState::Invalid;
+                    }
+                } else {
                     return AuthState::Invalid;
                 }
-            } else {
-                return AuthState::Invalid;
             }
         }
 
@@ -126,7 +134,7 @@ impl fmt::Debug for PersistedAuth {
             .field("access_token", &"[REDACTED]")
             .field("refresh_token", &"[REDACTED]")
             .field("id_token", &"[REDACTED]")
-            .field("account_id", &self.account_id)
+            .field("account_id", &"[REDACTED]")
             .field("access_token_expires_at", &self.access_token_expires_at)
             .field("last_refresh", &self.last_refresh)
             .finish()

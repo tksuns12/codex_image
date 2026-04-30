@@ -8,6 +8,7 @@ use crate::diagnostics::CliError;
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AuthStatus {
     pub status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
     pub access_token_expires_at: Option<DateTime<Utc>>,
 }
@@ -28,7 +29,7 @@ pub fn status_for_cli(store: &AuthStore) -> Result<AuthStatus, CliError> {
             let state = auth.classify(Utc::now());
             Ok(AuthStatus {
                 status: state.as_str(),
-                account_id: auth.account_id.clone(),
+                account_id: None,
                 access_token_expires_at: auth.access_token_expires_at,
             })
         }

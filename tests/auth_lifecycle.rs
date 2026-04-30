@@ -32,7 +32,7 @@ fn auth_lifecycle_status_for_cli_maps_parse_error_to_invalid_state() {
 }
 
 #[test]
-fn auth_lifecycle_status_for_cli_redacts_tokens_in_serialized_json() {
+fn auth_lifecycle_status_for_cli_redacts_tokens_and_account_id_in_serialized_json() {
     let temp = TempDir::new().unwrap();
     let auth_path = temp.path().join("auth.json");
     let store = AuthStore::new(auth_path.clone());
@@ -44,7 +44,9 @@ fn auth_lifecycle_status_for_cli_redacts_tokens_in_serialized_json() {
     let json = serde_json::to_string(&status).unwrap();
 
     assert_eq!(status.status, "valid");
-    assert_eq!(status.account_id.as_deref(), Some("acct_123"));
+    assert!(status.account_id.is_none());
+    assert!(!json.contains("\"account_id\""));
+    assert!(!json.contains("acct_123"));
     assert!(!json.contains("\"access_token\":"));
     assert!(!json.contains("refresh_token"));
     assert!(!json.contains("id_token"));
@@ -143,7 +145,7 @@ fn auth_lifecycle_status_for_cli_reports_expired_refreshable_for_expired_auth() 
     let status = status_for_cli(&store).unwrap();
 
     assert_eq!(status.status, "expired_refreshable");
-    assert_eq!(status.account_id.as_deref(), Some("acct_expired"));
+    assert!(status.account_id.is_none());
     assert!(status.access_token_expires_at.is_some());
 }
 
@@ -187,16 +189,19 @@ fn auth_lifecycle_redacts_tokens_in_debug_and_error_envelopes() {
     let refresh_secret = "refresh-secret-should-not-leak";
     let id_secret = "id-secret-should-not-leak";
 
-    let auth = PersistedAuth::new(
+    let account_id = "acct-debug-should-not-leak";
+    let mut auth = PersistedAuth::new(
         access_secret.to_string(),
         refresh_secret.to_string(),
         id_secret.to_string(),
     );
+    auth.account_id = Some(account_id.to_string());
     let debug = format!("{auth:?}");
 
     assert!(!debug.contains(access_secret));
     assert!(!debug.contains(refresh_secret));
     assert!(!debug.contains(id_secret));
+    assert!(!debug.contains(account_id));
     assert!(debug.contains("[REDACTED]"));
 
     let error = CliError::AuthInvalidState;
@@ -209,6 +214,60 @@ fn auth_lifecycle_redacts_tokens_in_debug_and_error_envelopes() {
     assert!(!envelope_json.contains(id_secret));
     assert!(!error_debug.contains(access_secret));
     assert!(!error_display.contains(access_secret));
+}
+
+#[test]
+fn auth_lifecycle_rejects_tampered_persisted_metadata_before_authorizing() {
+    let temp = TempDir::new().unwrap();
+    let now = Utc::now();
+
+    let mut wrong_version = PersistedAuth::new(
+        "access-token".to_string(),
+        "refresh-token".to_string(),
+        fake_jwt("acct_tampered", (now + TimeDelta::minutes(15)).timestamp()),
+    );
+    assert_eq!(wrong_version.populate_claim_metadata(), AuthState::Valid);
+    wrong_version.version = 999;
+    assert_eq!(wrong_version.classify(now), AuthState::Invalid);
+
+    let wrong_version_store = AuthStore::new(temp.path().join("wrong-version.json"));
+    wrong_version_store.save(&wrong_version).unwrap();
+    let wrong_version_status = status_for_cli(&wrong_version_store).unwrap();
+    assert_eq!(wrong_version_status.status, "invalid");
+    let wrong_version_error = get_access_token_or_error(&wrong_version_store).unwrap_err();
+    assert!(matches!(wrong_version_error, CliError::AuthInvalidState));
+
+    let mut wrong_type = PersistedAuth::new(
+        "access-token".to_string(),
+        "refresh-token".to_string(),
+        fake_jwt("acct_tampered", (now + TimeDelta::minutes(15)).timestamp()),
+    );
+    assert_eq!(wrong_type.populate_claim_metadata(), AuthState::Valid);
+    wrong_type.auth_type = "api_key".to_string();
+    assert_eq!(wrong_type.classify(now), AuthState::Invalid);
+
+    let wrong_type_store = AuthStore::new(temp.path().join("wrong-type.json"));
+    wrong_type_store.save(&wrong_type).unwrap();
+    let wrong_type_status = status_for_cli(&wrong_type_store).unwrap();
+    assert_eq!(wrong_type_status.status, "invalid");
+    let wrong_type_error = get_access_token_or_error(&wrong_type_store).unwrap_err();
+    assert!(matches!(wrong_type_error, CliError::AuthInvalidState));
+
+    let mut empty_account = PersistedAuth::new(
+        "access-token".to_string(),
+        "refresh-token".to_string(),
+        fake_jwt("acct_tampered", (now + TimeDelta::minutes(15)).timestamp()),
+    );
+    assert_eq!(empty_account.populate_claim_metadata(), AuthState::Valid);
+    empty_account.account_id = Some("   ".to_string());
+    assert_eq!(empty_account.classify(now), AuthState::Invalid);
+
+    let empty_account_store = AuthStore::new(temp.path().join("empty-account.json"));
+    empty_account_store.save(&empty_account).unwrap();
+    let empty_account_status = status_for_cli(&empty_account_store).unwrap();
+    assert_eq!(empty_account_status.status, "invalid");
+    let empty_account_error = get_access_token_or_error(&empty_account_store).unwrap_err();
+    assert!(matches!(empty_account_error, CliError::AuthInvalidState));
 }
 
 #[test]
