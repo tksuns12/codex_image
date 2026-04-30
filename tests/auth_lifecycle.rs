@@ -155,9 +155,15 @@ fn auth_lifecycle_get_access_token_rejects_empty_or_missing_auth_fields() {
     let mut empty_fields_auth = PersistedAuth::new(
         "   ".to_string(),
         "refresh-token".to_string(),
-        fake_jwt("acct_empty", (Utc::now() + TimeDelta::minutes(5)).timestamp()),
+        fake_jwt(
+            "acct_empty",
+            (Utc::now() + TimeDelta::minutes(5)).timestamp(),
+        ),
     );
-    assert_eq!(empty_fields_auth.populate_claim_metadata(), AuthState::Valid);
+    assert_eq!(
+        empty_fields_auth.populate_claim_metadata(),
+        AuthState::Valid
+    );
     empty_fields_store.save(&empty_fields_auth).unwrap();
 
     let empty_fields_error = get_access_token_or_error(&empty_fields_store).unwrap_err();

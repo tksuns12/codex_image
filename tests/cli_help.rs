@@ -38,6 +38,39 @@ fn cli_help_status_without_json_flag_is_usage_error() {
 }
 
 #[test]
+fn cli_help_generate_help_documents_required_out_and_prompt_contract() {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("generate").arg("--help");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--out"))
+        .stdout(predicate::str::contains("prompt"));
+}
+
+#[test]
+fn cli_help_generate_without_out_is_usage_error_without_json_envelope() {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("generate").arg("prompt only");
+
+    cmd.assert()
+        .code(2)
+        .stderr(predicate::str::contains("--out"))
+        .stderr(predicate::str::contains("\"error\":").not());
+}
+
+#[test]
+fn cli_help_generate_without_prompt_is_usage_error_without_json_envelope() {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("generate").arg("--out").arg("./images");
+
+    cmd.assert()
+        .code(2)
+        .stderr(predicate::str::contains("<PROMPT>").or(predicate::str::contains("<prompt>")))
+        .stderr(predicate::str::contains("\"error\":").not());
+}
+
+#[test]
 fn cli_help_logout_command_is_available() {
     let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
     cmd.arg("logout").arg("--help");

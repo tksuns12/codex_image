@@ -1,12 +1,17 @@
 use std::io;
+use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand};
 use reqwest::Client;
 use serde::Serialize;
 
-use crate::auth::{login_device_code, status_for_cli, AuthStore, DeviceLoginPollPolicy};
-use crate::config::AuthConfig;
+use crate::auth::{
+    get_access_token_or_error, login_device_code, status_for_cli, AuthStore, DeviceLoginPollPolicy,
+};
+use crate::config::{AuthConfig, GenerateConfig};
 use crate::diagnostics::CliError;
+use crate::openai::{generate_image, ImageGenerationRequest, GPT_IMAGE_MODEL};
+use crate::output::write_generation_output;
 
 #[derive(Debug, Parser)]
 #[command(name = "codex-image", version, about = "Codex Image CLI")]
@@ -24,6 +29,14 @@ enum Commands {
         /// Required stable status contract output.
         #[arg(long, required = true, action = ArgAction::SetTrue)]
         json: bool,
+    },
+    /// Generate image artifacts and a manifest for the provided prompt.
+    Generate {
+        /// Prompt text sent to the stable gpt-image-2 generation contract.
+        prompt: String,
+        /// Output directory where generated image files and manifest.json are written.
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
     },
     /// Clear local codex-image auth state.
     Logout,
@@ -61,6 +74,7 @@ async fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.command {
         Commands::Login => login().await,
         Commands::Status { json } => status(json),
+        Commands::Generate { prompt, out } => generate(prompt, out).await,
         Commands::Logout => logout(),
     }
 }
@@ -85,6 +99,37 @@ fn status(_json: bool) -> Result<(), CliError> {
 
     let line =
         serde_json::to_string(&status).unwrap_or_else(|_| "{\"status\":\"invalid\"}".to_string());
+    println!("{line}");
+
+    Ok(())
+}
+
+async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
+    let auth_config = AuthConfig::from_env_for_store()?;
+    let auth_store = AuthStore::from_config(&auth_config)?;
+    let access_token = get_access_token_or_error(&auth_store)?;
+
+    let generate_config = GenerateConfig::from_env()?;
+    let client = Client::new();
+
+    let request = ImageGenerationRequest {
+        prompt: prompt.clone(),
+        size: None,
+        quality: None,
+        background: None,
+        output_format: None,
+    };
+
+    let response = generate_image(
+        &client,
+        &generate_config.api_base_url,
+        &access_token,
+        &request,
+    )
+    .await?;
+
+    let manifest = write_generation_output(&prompt, GPT_IMAGE_MODEL, &out, &response)?;
+    let line = serde_json::to_string(&manifest).map_err(|_| CliError::OutputWriteFailed)?;
     println!("{line}");
 
     Ok(())

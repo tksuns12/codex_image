@@ -61,7 +61,10 @@ fn output_writes_single_image_and_manifest_with_expected_contract() {
     let manifest_json: serde_json::Value = serde_json::from_str(&manifest_text).unwrap();
     assert_eq!(manifest_json["prompt"], "sunrise");
     assert_eq!(manifest_json["model"], "gpt-image-2");
-    assert_eq!(manifest_json["images"][0]["path"], image_path.to_string_lossy().to_string());
+    assert_eq!(
+        manifest_json["images"][0]["path"],
+        image_path.to_string_lossy().to_string()
+    );
 }
 
 #[test]
@@ -111,7 +114,13 @@ fn output_manifest_redacts_b64_and_token_sentinels() {
     let manifest_text = fs::read_to_string(out_dir.join("manifest.json")).unwrap();
     let json_text = serde_json::to_string(&manifest).unwrap();
 
-    for forbidden in ["b64_json", "access-token", "refresh-token", "id-token", "Bearer"] {
+    for forbidden in [
+        "b64_json",
+        "access-token",
+        "refresh-token",
+        "id-token",
+        "Bearer",
+    ] {
         assert!(
             !manifest_text.contains(forbidden),
             "manifest should not contain {forbidden}"
@@ -144,7 +153,10 @@ fn output_invalid_base64_maps_to_response_contract_error() {
         err,
         CliError::ImageGenerationResponseContract { .. }
     ));
-    assert_eq!(err.error_envelope().error.code, "response_contract.image_generation");
+    assert_eq!(
+        err.error_envelope().error.code,
+        "response_contract.image_generation"
+    );
 }
 
 #[test]
@@ -154,8 +166,8 @@ fn output_empty_image_list_maps_to_response_contract_error() {
 
     let response = response_with_images(vec![]);
 
-    let err =
-        write_generation_output("empty", "gpt-image-2", &out_dir, &response).expect_err("empty image list must fail");
+    let err = write_generation_output("empty", "gpt-image-2", &out_dir, &response)
+        .expect_err("empty image list must fail");
 
     assert!(matches!(
         err,
@@ -177,5 +189,8 @@ fn output_existing_file_target_maps_to_filesystem_error() {
         err,
         CliError::OutputWriteFailed | CliError::OutputVerificationFailed
     ));
-    assert_eq!(err.error_envelope().error.code, "filesystem.output_write_failed");
+    assert_eq!(
+        err.error_envelope().error.code,
+        "filesystem.output_write_failed"
+    );
 }

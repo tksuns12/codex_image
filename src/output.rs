@@ -101,7 +101,11 @@ pub fn write_generation_output(
             }
         })?;
 
-        let image_name = format!("image-{index:04}.{format}", index = idx + 1, format = format);
+        let image_name = format!(
+            "image-{index:04}.{format}",
+            index = idx + 1,
+            format = format
+        );
         let image_path = out_dir.join(image_name);
         atomic_write_bytes(&image_path, &image_bytes).map_err(|_| CliError::OutputWriteFailed)?;
 
@@ -132,7 +136,8 @@ pub fn write_generation_output(
         },
     };
 
-    let manifest_json = serde_json::to_vec_pretty(&manifest).map_err(|_| CliError::OutputWriteFailed)?;
+    let manifest_json =
+        serde_json::to_vec_pretty(&manifest).map_err(|_| CliError::OutputWriteFailed)?;
     atomic_write_bytes(&manifest_path, &manifest_json).map_err(|_| CliError::OutputWriteFailed)?;
 
     if !manifest_path.is_file() {
@@ -156,7 +161,9 @@ fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     loop {
         let tmp_path = parent.join(format!(
             ".{}.tmp-{}-{}",
-            path.file_name().and_then(|n| n.to_str()).unwrap_or("output"),
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("output"),
             pid,
             attempt
         ));

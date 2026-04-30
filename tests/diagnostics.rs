@@ -11,7 +11,11 @@ fn assert_error_contract_shape(json: &serde_json::Value) {
     let root = json
         .as_object()
         .expect("error envelope root should be an object");
-    assert_eq!(root.len(), 1, "error envelope root must only contain `error`");
+    assert_eq!(
+        root.len(),
+        1,
+        "error envelope root must only contain `error`"
+    );
 
     let error = root
         .get("error")
@@ -186,14 +190,26 @@ fn diagnostics_output_write_or_verify_failures_map_to_filesystem_exit() {
     let write_err = CliError::OutputWriteFailed;
     let write_json = parse_envelope(&write_err);
     assert_eq!(write_err.exit_code(), ExitCode::Filesystem);
-    assert_eq!(write_json["error"]["code"], "filesystem.output_write_failed");
-    assert_eq!(write_json["error"]["message"], "failed to write generated image output");
+    assert_eq!(
+        write_json["error"]["code"],
+        "filesystem.output_write_failed"
+    );
+    assert_eq!(
+        write_json["error"]["message"],
+        "failed to write generated image output"
+    );
 
     let verify_err = CliError::OutputVerificationFailed;
     let verify_json = parse_envelope(&verify_err);
     assert_eq!(verify_err.exit_code(), ExitCode::Filesystem);
-    assert_eq!(verify_json["error"]["code"], "filesystem.output_write_failed");
-    assert_eq!(verify_json["error"]["message"], "failed to write generated image output");
+    assert_eq!(
+        verify_json["error"]["code"],
+        "filesystem.output_write_failed"
+    );
+    assert_eq!(
+        verify_json["error"]["message"],
+        "failed to write generated image output"
+    );
 }
 
 #[test]
