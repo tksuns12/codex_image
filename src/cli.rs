@@ -8,10 +8,11 @@ use serde::Serialize;
 use crate::auth::{
     get_access_token_or_error, login_oauth_callback, status_for_cli, AuthStore, OAuthLoginPolicy,
 };
-use crate::config::{AuthConfig, GenerateConfig};
+use crate::codex::generate_image_with_codex;
+use crate::config::{AuthConfig, GenerateConfig, ENV_API_BASE_URL};
 use crate::diagnostics::CliError;
 use crate::openai::{generate_image, ImageGenerationRequest, GPT_IMAGE_MODEL};
-use crate::output::write_generation_output;
+use crate::output::{write_generation_output, write_generation_output_from_files};
 
 #[derive(Debug, Parser)]
 #[command(name = "codex-image", version, about = "Codex Image CLI")]
@@ -105,6 +106,24 @@ fn status(_json: bool) -> Result<(), CliError> {
 }
 
 async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
+    if std::env::var_os(ENV_API_BASE_URL).is_some() {
+        return generate_with_openai_api(prompt, out).await;
+    }
+
+    let generated = generate_image_with_codex(&prompt, &out)?;
+    let manifest = write_generation_output_from_files(
+        &prompt,
+        GPT_IMAGE_MODEL,
+        &out,
+        &[generated.source_path],
+    )?;
+    let line = serde_json::to_string(&manifest).map_err(|_| CliError::OutputWriteFailed)?;
+    println!("{line}");
+
+    Ok(())
+}
+
+async fn generate_with_openai_api(prompt: String, out: PathBuf) -> Result<(), CliError> {
     let auth_config = AuthConfig::from_env_for_store()?;
     let auth_store = AuthStore::from_config(&auth_config)?;
     let access_token = get_access_token_or_error(&auth_store)?;

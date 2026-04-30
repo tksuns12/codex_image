@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use assert_cmd::Command;
 use chrono::{Duration, Utc};
@@ -36,6 +38,78 @@ fn codex_sentinel_setup(home: &std::path::Path) -> std::path::PathBuf {
     fs::create_dir_all(codex_auth_path.parent().unwrap()).unwrap();
     fs::write(&codex_auth_path, br#"{"access_token":"codex-sentinel"}"#).unwrap();
     codex_auth_path
+}
+
+fn write_fake_codex(temp: &TempDir, source_image: &std::path::Path) -> std::path::PathBuf {
+    let script_path = temp.path().join("fake-codex");
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -eu
+last_message=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output-last-message)
+      shift
+      last_message="$1"
+      ;;
+  esac
+  shift || true
+done
+if [ -z "$last_message" ]; then
+  exit 41
+fi
+printf '{{"image_path":"{}","note":"fake codex generated image"}}' > "$last_message"
+"#,
+        source_image.display()
+    );
+    fs::write(&script_path, script).unwrap();
+    #[cfg(unix)]
+    {
+        let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).unwrap();
+    }
+    script_path
+}
+
+#[tokio::test]
+async fn generate_default_codex_backend_copies_image_and_writes_manifest() {
+    let temp = TempDir::new().unwrap();
+    let source_image = temp.path().join("codex-source.png");
+    fs::write(&source_image, b"codex-image-bytes").unwrap();
+    let fake_codex = write_fake_codex(&temp, &source_image);
+    let out_dir = temp.path().join("images");
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("generate")
+        .arg("red circle")
+        .arg("--out")
+        .arg(&out_dir)
+        .env("CODEX_IMAGE_CODEX_BIN", &fake_codex)
+        .env_remove("CODEX_IMAGE_API_BASE_URL")
+        .env_remove("CODEX_IMAGE_HOME")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let manifest: Value = serde_json::from_str(stdout.trim_end()).unwrap();
+    assert_eq!(manifest["prompt"], "red circle");
+    assert_eq!(manifest["model"], "gpt-image-2");
+
+    let image_path = std::path::PathBuf::from(manifest["images"][0]["path"].as_str().unwrap());
+    assert_eq!(fs::read(&image_path).unwrap(), b"codex-image-bytes");
+    assert_eq!(image_path, out_dir.join("image-0001.png"));
+
+    let manifest_path = out_dir.join("manifest.json");
+    assert!(manifest_path.is_file());
 }
 
 #[tokio::test]

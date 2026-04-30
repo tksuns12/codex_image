@@ -304,6 +304,36 @@ fn diagnostics_auth_insufficient_scope_is_actionable_auth_error() {
 }
 
 #[test]
+fn diagnostics_codex_backend_errors_are_redacted_and_actionable() {
+    let unavailable = CliError::CodexCliUnavailable;
+    assert_eq!(unavailable.exit_code(), ExitCode::UsageOrConfig);
+    let unavailable_json = parse_envelope(&unavailable);
+    assert_eq!(
+        unavailable_json["error"]["code"],
+        "config.codex_cli_unavailable"
+    );
+    assert_eq!(
+        unavailable_json["error"]["hint"],
+        "Install the Codex extension or set CODEX_IMAGE_CODEX_BIN to the Codex executable."
+    );
+
+    let failed = CliError::CodexImageGenerationFailed {
+        source_message: "Bearer sk-secret raw codex output".to_string(),
+    };
+    assert_eq!(failed.exit_code(), ExitCode::Api);
+    let failed_json = parse_envelope(&failed);
+    assert_eq!(
+        failed_json["error"]["code"],
+        "api.codex_image_generation_failed"
+    );
+
+    let rendered = serde_json::to_string(&failed_json).unwrap();
+    assert!(!rendered.contains("Bearer"));
+    assert!(!rendered.contains("sk-secret"));
+    assert!(!rendered.contains("raw codex output"));
+}
+
+#[test]
 fn diagnostics_exit_code_taxonomy_is_stable() {
     assert_eq!(ExitCode::Unknown.as_i32(), 1);
     assert_eq!(ExitCode::UsageOrConfig.as_i32(), 2);
@@ -336,6 +366,10 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::OutputVerificationFailed,
         CliError::ImageGenerationResponseContract {
             source_message: "b64_json".to_string(),
+        },
+        CliError::CodexCliUnavailable,
+        CliError::CodexImageGenerationFailed {
+            source_message: "codex failed".to_string(),
         },
         CliError::LoginNotImplemented,
     ];

@@ -7,6 +7,7 @@ pub const ENV_AUTH_FILE: &str = "CODEX_IMAGE_AUTH_FILE";
 pub const ENV_HOME: &str = "CODEX_IMAGE_HOME";
 pub const ENV_AUTH_BASE_URL: &str = "CODEX_IMAGE_AUTH_BASE_URL";
 pub const ENV_API_BASE_URL: &str = "CODEX_IMAGE_API_BASE_URL";
+pub const ENV_CODEX_BIN: &str = "CODEX_IMAGE_CODEX_BIN";
 pub const ENV_CLIENT_ID: &str = "CODEX_IMAGE_CLIENT_ID";
 
 const DEFAULT_AUTH_BASE_URL: &str = "https://auth.openai.com";

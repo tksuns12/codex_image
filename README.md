@@ -52,7 +52,9 @@ Run a generation with an output directory:
 codex-image generate "A watercolor fox reading in a library" --out ./out
 ```
 
-The command writes image artifacts and `manifest.json` under `--out`, and prints manifest metadata as JSON to stdout.
+By default, `generate` delegates image creation to the installed Codex CLI's built-in image generation tool, then copies the generated image into `--out` and writes `manifest.json`. This uses the existing Codex login surface; `codex-image` does not read, print, or mutate Codex auth files.
+
+If `CODEX_IMAGE_API_BASE_URL` is explicitly set, `generate` uses the direct Image API compatibility path for trusted/test endpoints and requires this tool's owned auth state.
 
 ### 4) Logout
 
@@ -65,7 +67,8 @@ codex-image logout
 ## Environment and trust boundaries
 
 - `CODEX_IMAGE_HOME` controls where `codex-image` stores its auth state.
-- `CODEX_IMAGE_AUTH_BASE_URL` and `CODEX_IMAGE_API_BASE_URL` should only point to trusted endpoints you control.
+- `CODEX_IMAGE_CODEX_BIN` optionally points `generate` at a specific Codex executable. If unset, `codex-image` checks `codex` on `PATH` and common VS Code/Cursor extension install locations.
+- `CODEX_IMAGE_AUTH_BASE_URL` and `CODEX_IMAGE_API_BASE_URL` should only point to trusted endpoints you control. Setting `CODEX_IMAGE_API_BASE_URL` opts `generate` into the direct Image API compatibility path instead of the default Codex backend.
 - Keep token material private: do not print auth files, bearer headers, raw upstream response bodies, or raw base64 image payloads.
 
 ## Verification scripts

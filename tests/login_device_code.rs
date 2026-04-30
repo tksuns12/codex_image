@@ -76,23 +76,10 @@ async fn login_command_uses_oauth_callback_and_persists_owned_auth() {
         "http://localhost:1455/auth/callback"
     );
     assert_eq!(query.get("codex_cli_simplified_flow").unwrap(), "true");
-    let scope = query
-        .get("scope")
-        .expect("authorize URL should request scopes");
-    for required_scope in [
-        "openid",
-        "profile",
-        "email",
-        "offline_access",
-        "api.model.images.request",
-    ] {
-        assert!(
-            scope
-                .split_whitespace()
-                .any(|scope| scope == required_scope),
-            "authorize URL should request {required_scope}, got {scope}"
-        );
-    }
+    assert_eq!(
+        query.get("scope").unwrap(),
+        "openid profile email offline_access"
+    );
     let state = query.get("state").unwrap();
 
     complete_callback("auth-code-cli", state);

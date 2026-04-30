@@ -69,6 +69,10 @@ pub enum CliError {
     OutputVerificationFailed,
     #[error("image generation response contract failure")]
     ImageGenerationResponseContract { source_message: String },
+    #[error("Codex CLI is unavailable")]
+    CodexCliUnavailable,
+    #[error("Codex image generation failed")]
+    CodexImageGenerationFailed { source_message: String },
     #[error("login flow not implemented")]
     LoginNotImplemented,
 }
@@ -268,6 +272,20 @@ impl CliError {
                 recoverable: false,
                 hint: "Try again; if it persists, report the issue with request context.",
                 exit_code: ExitCode::ResponseContract,
+            },
+            Self::CodexCliUnavailable => ErrorClassification {
+                code: "config.codex_cli_unavailable",
+                message: "Codex CLI executable was not found",
+                recoverable: true,
+                hint: "Install the Codex extension or set CODEX_IMAGE_CODEX_BIN to the Codex executable.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::CodexImageGenerationFailed { .. } => ErrorClassification {
+                code: "api.codex_image_generation_failed",
+                message: "Codex image generation failed",
+                recoverable: true,
+                hint: "Retry generation in a moment, or verify Codex is logged in.",
+                exit_code: ExitCode::Api,
             },
             Self::LoginNotImplemented => ErrorClassification {
                 code: "unknown",

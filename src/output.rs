@@ -1,8 +1,9 @@
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use chrono::Utc;
 use serde::Serialize;
 
 use crate::diagnostics::CliError;
@@ -133,6 +134,90 @@ pub fn write_generation_output(
         response: GenerationResponseMetadata {
             created: response.created,
             usage: response.usage.clone().into(),
+        },
+    };
+
+    let manifest_json =
+        serde_json::to_vec_pretty(&manifest).map_err(|_| CliError::OutputWriteFailed)?;
+    atomic_write_bytes(&manifest_path, &manifest_json).map_err(|_| CliError::OutputWriteFailed)?;
+
+    if !manifest_path.is_file() {
+        return Err(CliError::OutputVerificationFailed);
+    }
+
+    Ok(manifest)
+}
+
+pub fn write_generation_output_from_files(
+    prompt: &str,
+    model: &str,
+    out_dir: &Path,
+    source_paths: &[PathBuf],
+) -> Result<GenerationManifest, CliError> {
+    if source_paths.is_empty() {
+        return Err(CliError::ImageGenerationResponseContract {
+            source_message: "Codex image generation response missing image path".to_string(),
+        });
+    }
+
+    fs::create_dir_all(out_dir).map_err(|_| CliError::OutputWriteFailed)?;
+
+    let mut images = Vec::with_capacity(source_paths.len());
+
+    for (idx, source_path) in source_paths.iter().enumerate() {
+        if !source_path.is_file() {
+            return Err(CliError::ImageGenerationResponseContract {
+                source_message: "Codex image generation source path missing".to_string(),
+            });
+        }
+
+        let format = source_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::trim)
+            .filter(|extension| !extension.is_empty())
+            .unwrap_or(DEFAULT_IMAGE_FORMAT)
+            .to_ascii_lowercase();
+
+        if !is_safe_format(&format) {
+            return Err(CliError::ImageGenerationResponseContract {
+                source_message: "Codex image generation source path has invalid format".to_string(),
+            });
+        }
+
+        let image_bytes = fs::read(source_path).map_err(|_| CliError::OutputWriteFailed)?;
+        let image_name = format!(
+            "image-{index:04}.{format}",
+            index = idx + 1,
+            format = format
+        );
+        let image_path = out_dir.join(image_name);
+        atomic_write_bytes(&image_path, &image_bytes).map_err(|_| CliError::OutputWriteFailed)?;
+
+        if !image_path.is_file() {
+            return Err(CliError::OutputVerificationFailed);
+        }
+
+        images.push(GeneratedImageArtifact {
+            index: idx + 1,
+            path: path_to_string(&image_path),
+            format,
+            byte_count: image_bytes.len(),
+            size: None,
+            quality: None,
+            background: None,
+        });
+    }
+
+    let manifest_path = out_dir.join(MANIFEST_FILE);
+    let manifest = GenerationManifest {
+        prompt: prompt.to_string(),
+        model: model.to_string(),
+        manifest_path: path_to_string(&manifest_path),
+        images,
+        response: GenerationResponseMetadata {
+            created: Utc::now().timestamp(),
+            usage: UsageMetadata::default(),
         },
     };
 
