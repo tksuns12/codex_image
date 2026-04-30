@@ -37,6 +37,10 @@ fn release_workflow_is_scoped_to_release_branch_and_release_please() {
         "release-please Rust releases need a changelog seed file"
     );
     assert!(
+        workflow.contains("dtolnay/rust-toolchain@stable"),
+        "release workflow must install Rust explicitly for GitHub and act runners"
+    );
+    assert!(
         workflow.contains("cargo test --locked"),
         "release workflow must run tests before release-please"
     );
