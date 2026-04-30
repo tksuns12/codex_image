@@ -135,6 +135,39 @@ async fn openai_generate_non_2xx_maps_to_api_diagnostic_without_leaking_body() {
 }
 
 #[tokio::test]
+async fn openai_generate_missing_image_scope_maps_to_auth_diagnostic_without_leaking_body() {
+    let server = MockServer::start().await;
+    let upstream_body = serde_json::json!({
+        "error": "You have insufficient permissions for this operation. Missing scopes: api.model.images.request. Bearer access-token sk-live-secret prompt-body b64_json"
+    });
+
+    Mock::given(method("POST"))
+        .and(path("/v1/images/generations"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(upstream_body))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = reqwest::Client::new();
+    let request = build_request("sensitive prompt text");
+
+    let err = generate_image(&client, &base_url(&server, false), "access-token", &request)
+        .await
+        .expect_err("missing image scope should fail");
+
+    assert!(matches!(err, CliError::AuthInsufficientScope));
+    assert_eq!(err.exit_code(), ExitCode::Auth);
+
+    let envelope = serde_json::to_string(&err.error_envelope()).unwrap();
+    assert!(envelope.contains("auth.insufficient_scope"));
+    assert!(!envelope.contains("Bearer"));
+    assert!(!envelope.contains("access-token"));
+    assert!(!envelope.contains("sk-live-secret"));
+    assert!(!envelope.contains("prompt-body"));
+    assert!(!envelope.contains("b64_json"));
+}
+
+#[tokio::test]
 async fn openai_generate_malformed_json_maps_to_response_contract() {
     let server = MockServer::start().await;
 

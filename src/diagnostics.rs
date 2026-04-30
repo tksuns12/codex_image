@@ -51,6 +51,8 @@ pub enum CliError {
     AuthNotLoggedIn,
     #[error("auth access token expired")]
     AuthExpired,
+    #[error("auth access token has insufficient API scope")]
+    AuthInsufficientScope,
     #[error("auth state invalid")]
     AuthInvalidState,
     #[error("OAuth login error")]
@@ -113,6 +115,13 @@ impl CliError {
                 message: "auth access token expired",
                 recoverable: true,
                 hint: "Run `codex-image login` to refresh local auth state.",
+                exit_code: ExitCode::Auth,
+            },
+            Self::AuthInsufficientScope => ErrorClassification {
+                code: "auth.insufficient_scope",
+                message: "auth access token lacks required image generation scope",
+                recoverable: true,
+                hint: "Run `codex-image login` again to grant image generation access.",
                 exit_code: ExitCode::Auth,
             },
             Self::AuthInvalidState => ErrorClassification {

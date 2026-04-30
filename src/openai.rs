@@ -1,4 +1,4 @@
-use reqwest::{Client, Url};
+use reqwest::{Client, Response, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::CliError;
@@ -6,6 +6,8 @@ use crate::diagnostics::CliError;
 pub const GPT_IMAGE_MODEL: &str = "gpt-image-2";
 
 const DEFAULT_OUTPUT_FORMAT: &str = "png";
+const IMAGE_GENERATION_SCOPE: &str = "api.model.images.request";
+const ERROR_BODY_CLASSIFICATION_LIMIT_BYTES: u64 = 8 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct ImageGenerationRequest {
@@ -76,6 +78,27 @@ struct WireGeneratedImage {
     output_format: Option<String>,
 }
 
+async fn read_error_body_prefix(response: Response) -> Option<String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > ERROR_BODY_CLASSIFICATION_LIMIT_BYTES)
+    {
+        return None;
+    }
+
+    let bytes = response.bytes().await.ok()?;
+    let limit = usize::try_from(ERROR_BODY_CLASSIFICATION_LIMIT_BYTES).ok()?;
+    let prefix_len = bytes.len().min(limit);
+
+    Some(String::from_utf8_lossy(&bytes[..prefix_len]).into_owned())
+}
+
+fn is_missing_image_scope_error(status: StatusCode, body: &str) -> bool {
+    matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
+        && body.contains("Missing scopes:")
+        && body.contains(IMAGE_GENERATION_SCOPE)
+}
+
 pub async fn generate_image(
     client: &Client,
     api_base_url: &Url,
@@ -120,8 +143,17 @@ pub async fn generate_image(
         })?;
 
     if !response.status().is_success() {
+        let status = response.status();
+        let body_prefix = read_error_body_prefix(response).await;
+        if body_prefix
+            .as_deref()
+            .is_some_and(|body| is_missing_image_scope_error(status, body))
+        {
+            return Err(CliError::AuthInsufficientScope);
+        }
+
         return Err(CliError::ImageGenerationApi {
-            source_message: format!("upstream status {}", response.status()),
+            source_message: format!("upstream status {status}"),
         });
     }
 

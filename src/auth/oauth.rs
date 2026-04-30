@@ -13,7 +13,8 @@ use crate::config::AuthConfig;
 const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 const AUTHORIZE_PATH: &str = "/oauth/authorize";
 const TOKEN_PATH: &str = "/oauth/token";
-const SCOPE: &str = "openid profile email offline_access";
+const BASE_SCOPE: &str = "openid profile email offline_access";
+const IMAGE_GENERATION_SCOPE: &str = "api.model.images.request";
 
 #[derive(Clone, Debug)]
 pub struct OAuthLoginPolicy {
@@ -116,11 +117,12 @@ fn build_authorize_url(
         .join(AUTHORIZE_PATH)
         .map_err(|_| OAuthLoginError::AuthorizeUrl)?;
 
+    let scope = requested_scope();
     url.query_pairs_mut()
         .append_pair("response_type", "code")
         .append_pair("client_id", &config.client_id)
         .append_pair("redirect_uri", REDIRECT_URI)
-        .append_pair("scope", SCOPE)
+        .append_pair("scope", &scope)
         .append_pair("code_challenge", challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", state)
@@ -129,6 +131,10 @@ fn build_authorize_url(
         .append_pair("originator", "codex-image");
 
     Ok(url)
+}
+
+fn requested_scope() -> String {
+    format!("{BASE_SCOPE} {IMAGE_GENERATION_SCOPE}")
 }
 
 fn wait_for_callback(
@@ -341,10 +347,17 @@ mod tests {
         assert_eq!(pairs.get("response_type").unwrap(), "code");
         assert_eq!(pairs.get("client_id").unwrap(), "client-test");
         assert_eq!(pairs.get("redirect_uri").unwrap(), REDIRECT_URI);
-        assert_eq!(pairs.get("scope").unwrap(), SCOPE);
+        assert_eq!(pairs.get("scope").unwrap(), &requested_scope());
         assert_eq!(pairs.get("code_challenge").unwrap(), "challenge");
         assert_eq!(pairs.get("code_challenge_method").unwrap(), "S256");
         assert_eq!(pairs.get("state").unwrap(), "state-test");
         assert_eq!(pairs.get("codex_cli_simplified_flow").unwrap(), "true");
+        let scope = pairs.get("scope").expect("scope should be present");
+        assert!(
+            scope
+                .split_whitespace()
+                .any(|scope| scope == IMAGE_GENERATION_SCOPE),
+            "scope should include {IMAGE_GENERATION_SCOPE}, got {scope}"
+        );
     }
 }

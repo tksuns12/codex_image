@@ -219,6 +219,56 @@ async fn generate_api_failure_maps_to_exit_4_and_redacted_stderr() {
 }
 
 #[tokio::test]
+async fn generate_missing_image_scope_maps_to_auth_exit_with_relogin_hint() {
+    let temp = TempDir::new().unwrap();
+    let owned_home = temp.path().join("owned");
+    write_auth_json(&owned_home, "access-token-missing-scope");
+
+    let out_dir = temp.path().join("images");
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/images/generations"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "error": "You have insufficient permissions for this operation. Missing scopes: api.model.images.request. Bearer access-token-missing-scope b64_json sk-live-secret"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let output = Command::cargo_bin("codex-image")
+        .unwrap()
+        .arg("generate")
+        .arg("scope fail")
+        .arg("--out")
+        .arg(&out_dir)
+        .env("CODEX_IMAGE_HOME", &owned_home)
+        .env("CODEX_IMAGE_API_BASE_URL", server.uri())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let envelope: Value = serde_json::from_str(stderr.trim_end()).unwrap();
+    assert_eq!(envelope["error"]["code"], "auth.insufficient_scope");
+    assert_eq!(
+        envelope["error"]["hint"],
+        "Run `codex-image login` again to grant image generation access."
+    );
+
+    for forbidden in [
+        "Bearer",
+        "access-token-missing-scope",
+        "b64_json",
+        "sk-live-secret",
+    ] {
+        assert!(!stderr.contains(forbidden), "stderr leaked {forbidden}");
+    }
+}
+
+#[tokio::test]
 async fn generate_malformed_or_missing_response_data_maps_to_exit_6() {
     let temp = TempDir::new().unwrap();
     let owned_home = temp.path().join("owned");

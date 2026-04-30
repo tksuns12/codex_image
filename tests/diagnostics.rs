@@ -285,6 +285,25 @@ fn diagnostics_auth_expired_is_auth_domain_recoverable() {
 }
 
 #[test]
+fn diagnostics_auth_insufficient_scope_is_actionable_auth_error() {
+    let err = CliError::AuthInsufficientScope;
+
+    assert_eq!(err.exit_code(), ExitCode::Auth);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "auth.insufficient_scope");
+    assert_eq!(
+        json["error"]["message"],
+        "auth access token lacks required image generation scope"
+    );
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(
+        json["error"]["hint"],
+        "Run `codex-image login` again to grant image generation access."
+    );
+}
+
+#[test]
 fn diagnostics_exit_code_taxonomy_is_stable() {
     assert_eq!(ExitCode::Unknown.as_i32(), 1);
     assert_eq!(ExitCode::UsageOrConfig.as_i32(), 2);
@@ -303,6 +322,7 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::AuthStore(StoreError::Read),
         CliError::AuthNotLoggedIn,
         CliError::AuthExpired,
+        CliError::AuthInsufficientScope,
         CliError::AuthInvalidState,
         CliError::DeviceLogin(DeviceLoginError::UserCodeApi),
         CliError::DeviceLogin(DeviceLoginError::TokenExchangeContract),
