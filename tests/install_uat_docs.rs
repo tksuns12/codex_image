@@ -27,6 +27,10 @@ fn readme_covers_install_usage_and_codex_backend() {
         "README must link to the Korean translation"
     );
     assert!(
+        readme.contains("release-please") && readme.contains("release` branch"),
+        "README must document release branch and semver automation"
+    );
+    assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
             && !readme.contains("status --json")
@@ -62,6 +66,10 @@ fn korean_readme_covers_install_usage_and_codex_backend() {
     assert!(
         readme.contains("README.md"),
         "Korean README must link back to the English README"
+    );
+    assert!(
+        readme.contains("release-please") && readme.contains("release` 브랜치"),
+        "Korean README must document release branch and semver automation"
     );
     assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")

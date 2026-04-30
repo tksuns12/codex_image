@@ -75,6 +75,18 @@ Example stdout shape:
 
 No URL base environment variables are supported. No separate auth/API behavior exists.
 
+## Release workflow
+
+Releases are cut from the `release` branch only.
+
+The release workflow uses release-please to decide SemVer from Conventional Commit messages:
+
+- `fix:` creates a patch release.
+- `feat:` creates a minor release.
+- `feat!:`, `fix!:`, or another `!` breaking-change commit creates a major release.
+
+On push to `release`, the workflow runs tests and clippy, then release-please either opens/updates a release PR or creates the GitHub Release when that release PR is merged. When a release is created, the workflow builds and uploads archives for Linux, macOS, and Windows.
+
 ## Verification scripts
 
 ### Local install verification

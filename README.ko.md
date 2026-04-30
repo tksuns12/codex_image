@@ -75,6 +75,18 @@ stdout 예시 형식:
 
 URL 기반 환경 변수는 지원하지 않습니다. 별도의 인증/API 동작도 없습니다.
 
+## 릴리스 워크플로
+
+릴리스는 `release` 브랜치에서만 생성됩니다.
+
+릴리스 워크플로는 release-please를 사용해 Conventional Commit 메시지로 SemVer를 결정합니다.
+
+- `fix:`는 패치 릴리스를 만듭니다.
+- `feat:`는 마이너 릴리스를 만듭니다.
+- `feat!:`, `fix!:` 또는 `!`가 붙은 breaking-change 커밋은 메이저 릴리스를 만듭니다.
+
+`release` 브랜치에 push되면 워크플로가 테스트와 clippy를 실행한 뒤, release-please가 릴리스 PR을 열거나 갱신합니다. 그 릴리스 PR이 병합되면 GitHub Release가 생성되고, 워크플로가 Linux, macOS, Windows용 아카이브를 빌드해 업로드합니다.
+
 ## 검증 스크립트
 
 ### 로컬 설치 검증

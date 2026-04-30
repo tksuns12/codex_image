@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    needs: preflight
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Create or update release PR
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: rust
+          target-branch: release
+          package-name: codex-image
+
+  build-artifacts:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Package Unix archive
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="codex-image-${{ needs.release-please.outputs.tag_name }}-${{ matrix.target }}"
+          package_dir="dist/${asset}"
+          mkdir -p "$package_dir"
+          cp "target/${{ matrix.target }}/release/codex-image" "$package_dir/"
+          cp README.md README.ko.md "$package_dir/"
+          tar -C dist -czf "dist/${asset}.tar.gz" "$asset"
+          echo "ASSET_PATH=dist/${asset}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package Windows archive
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $asset = "codex-image-${{ needs.release-please.outputs.tag_name }}-${{ matrix.target }}"
+          $packageDir = "dist/$asset"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/codex-image.exe" "$packageDir/"
+          Copy-Item README.md, README.ko.md "$packageDir/"
+          Compress-Archive -Path "$packageDir/*" -DestinationPath "dist/$asset.zip" -Force
+          "ASSET_PATH=dist/$asset.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload archive to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$RELEASE_TAG" "$ASSET_PATH" --clobber
