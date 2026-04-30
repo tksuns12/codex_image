@@ -56,7 +56,6 @@ jobs:
         with:
           release-type: rust
           target-branch: release
-          package-name: codex-image
 
   build-artifacts:
     name: Build ${{ matrix.target }}

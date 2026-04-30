@@ -33,6 +33,10 @@ fn release_workflow_is_scoped_to_release_branch_and_release_please() {
         "release-please must target the release branch"
     );
     assert!(
+        !workflow.contains("package-name:"),
+        "release-please-action v4 no longer accepts package-name input"
+    );
+    assert!(
         include_str!("../CHANGELOG.md").contains("release-please"),
         "release-please Rust releases need a changelog seed file"
     );
