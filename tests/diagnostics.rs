@@ -7,6 +7,52 @@ fn parse_envelope(err: &CliError) -> serde_json::Value {
     serde_json::to_value(err.error_envelope()).expect("error envelope serializes")
 }
 
+fn assert_error_contract_shape(json: &serde_json::Value) {
+    let root = json
+        .as_object()
+        .expect("error envelope root should be an object");
+    assert_eq!(root.len(), 1, "error envelope root must only contain `error`");
+
+    let error = root
+        .get("error")
+        .and_then(serde_json::Value::as_object)
+        .expect("error envelope `error` field should be an object");
+    assert_eq!(
+        error.len(),
+        4,
+        "error object must only contain code/message/recoverable/hint"
+    );
+
+    assert!(
+        error
+            .get("code")
+            .and_then(serde_json::Value::as_str)
+            .is_some(),
+        "error.code must be a string"
+    );
+    assert!(
+        error
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .is_some(),
+        "error.message must be a string"
+    );
+    assert!(
+        error
+            .get("recoverable")
+            .and_then(serde_json::Value::as_bool)
+            .is_some(),
+        "error.recoverable must be a bool"
+    );
+    assert!(
+        error
+            .get("hint")
+            .and_then(serde_json::Value::as_str)
+            .is_some(),
+        "error.hint must be a string"
+    );
+}
+
 #[test]
 fn diagnostics_config_error_maps_to_usage_config_exit_and_shape() {
     let err = CliError::Config(ConfigError::InvalidValue {
@@ -146,4 +192,35 @@ fn diagnostics_auth_expired_is_auth_domain_recoverable() {
         json["error"]["hint"],
         "Run `codex-image login` to refresh local auth state."
     );
+}
+
+#[test]
+fn diagnostics_exit_code_taxonomy_is_stable() {
+    assert_eq!(ExitCode::Unknown.as_i32(), 1);
+    assert_eq!(ExitCode::UsageOrConfig.as_i32(), 2);
+    assert_eq!(ExitCode::Auth.as_i32(), 3);
+    assert_eq!(ExitCode::Api.as_i32(), 4);
+    assert_eq!(ExitCode::Filesystem.as_i32(), 5);
+    assert_eq!(ExitCode::ResponseContract.as_i32(), 6);
+}
+
+#[test]
+fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
+    let cases = [
+        CliError::Config(ConfigError::InvalidValue {
+            key: "CODEX_IMAGE_CLIENT_ID",
+        }),
+        CliError::AuthStore(StoreError::Read),
+        CliError::AuthNotLoggedIn,
+        CliError::AuthExpired,
+        CliError::AuthInvalidState,
+        CliError::DeviceLogin(DeviceLoginError::UserCodeApi),
+        CliError::DeviceLogin(DeviceLoginError::TokenExchangeContract),
+        CliError::LoginNotImplemented,
+    ];
+
+    for err in cases {
+        let json = parse_envelope(&err);
+        assert_error_contract_shape(&json);
+    }
 }

@@ -58,3 +58,40 @@ fn cli_help_unknown_subcommand_returns_clap_error_not_panic() {
         .stderr(predicate::str::contains("unrecognized subcommand"))
         .stderr(predicate::str::contains("panic").not());
 }
+
+#[test]
+fn cli_help_non_clap_dispatch_failures_emit_single_json_envelope_with_mapped_exit_code() {
+    let token_like_secret = "access-token-should-never-leak";
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("login")
+        .env(
+            "CODEX_IMAGE_AUTH_BASE_URL",
+            format!("::invalid-{token_like_secret}::"),
+        )
+        .env("CODEX_IMAGE_CLIENT_ID", "codex-image");
+
+    let output = cmd.output().expect("login command should run");
+
+    assert_eq!(output.status.code(), Some(2));
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8 JSON");
+    let stderr_trimmed = stderr.trim_end();
+    assert_eq!(
+        stderr_trimmed.lines().count(),
+        1,
+        "dispatch failures should emit exactly one JSON envelope line"
+    );
+
+    let envelope: serde_json::Value =
+        serde_json::from_str(stderr_trimmed).expect("stderr should be json envelope");
+    assert_eq!(envelope["error"]["code"], "config.invalid");
+    assert_eq!(envelope["error"]["message"], "configuration error");
+    assert_eq!(envelope["error"]["recoverable"], true);
+    assert_eq!(
+        envelope["error"]["hint"],
+        "Check CODEX_IMAGE_* configuration values."
+    );
+
+    assert!(!stderr.contains(token_like_secret));
+    assert!(!stderr.contains("CODEX_IMAGE_AUTH_BASE_URL"));
+}
