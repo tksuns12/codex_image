@@ -61,7 +61,7 @@ impl PersistedAuth {
             Some(account_id) if account_id.trim().is_empty() => return AuthState::Invalid,
             Some(_) => {}
             None => {
-                if let Some(account_id) = id_claims.account_id.or(id_claims.sub) {
+                if let Some(account_id) = id_claims.account_id() {
                     if account_id.trim().is_empty() {
                         return AuthState::Invalid;
                     }
@@ -96,7 +96,7 @@ impl PersistedAuth {
             None => return AuthState::Invalid,
         };
 
-        let account_id = id_claims.account_id.or(id_claims.sub);
+        let account_id = id_claims.account_id();
         let account_id = match account_id {
             Some(id) if !id.trim().is_empty() => id,
             _ => return AuthState::Invalid,
@@ -166,8 +166,24 @@ struct JwtClaims {
     sub: Option<String>,
     #[serde(default)]
     account_id: Option<String>,
+    #[serde(default, rename = "https://api.openai.com/auth")]
+    openai_auth: Option<OpenAiAuthClaims>,
     #[serde(default)]
     exp: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiAuthClaims {
+    #[serde(default)]
+    chatgpt_account_id: Option<String>,
+}
+
+impl JwtClaims {
+    fn account_id(self) -> Option<String> {
+        self.account_id
+            .or_else(|| self.openai_auth.and_then(|auth| auth.chatgpt_account_id))
+            .or(self.sub)
+    }
 }
 
 fn decode_jwt_claims(token: &str) -> Result<JwtClaims, ()> {

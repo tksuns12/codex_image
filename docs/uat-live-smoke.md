@@ -19,7 +19,7 @@ If you set either of these variables, point them only to trusted hosts you contr
 ## Prerequisites
 
 - Rust/Cargo installed.
-- You can complete device-code auth in a browser for the current account.
+- You can complete OAuth login in a browser for the current account.
 - Network access to the configured auth/API hosts.
 - Run from repository root.
 
@@ -61,7 +61,7 @@ The script prints phase logs and fails fast on any contract break:
 ## Failure interpretation
 
 - `phase=guard`: opt-in variable missing; rerun with `CODEX_IMAGE_RUN_LIVE=1` only if live test is intended.
-- `phase=login`: device-code flow failed/timed out/rejected.
+- `phase=login`: OAuth callback flow failed/timed out/rejected.
 - `phase=status-validate`: login did not produce a valid auth state.
 - `phase=generate`: live image API call failed; script prints redacted CLI stderr envelope and exits non-zero.
 - `phase=manifest-validate`: stdout or manifest contract malformed/missing.
@@ -77,7 +77,7 @@ The script prints phase logs and fails fast on any contract break:
 If the wrapper fails and you need deeper diagnosis, repeat the same sequence manually with an isolated `CODEX_IMAGE_HOME`:
 
 1. Install local binary to a temp root.
-2. Run `login` and complete device-code flow.
+2. Run `login` and complete OAuth callback flow.
 3. Run `status --json` and inspect `status`.
 4. Run `generate ... --out <dir>` and inspect `manifest.json` plus image files.
 5. Re-check that `$HOME/.codex/auth.json` checksum did not change.

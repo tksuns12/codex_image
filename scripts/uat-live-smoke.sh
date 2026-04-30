@@ -93,7 +93,7 @@ if [[ ! -x "$binary" ]]; then
 fi
 
 PHASE="login"
-log_phase "running interactive login (device-code flow)"
+log_phase "running interactive login (OAuth callback flow)"
 login_stderr="$(mktemp -t codex-image-uat-login-err.XXXXXX)"
 if ! HOME="$cli_home" CODEX_IMAGE_HOME="$auth_home" "$binary" login 2>"$login_stderr"; then
   redact_cli_stderr "$login_stderr"

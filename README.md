@@ -1,6 +1,6 @@
 # codex-image
 
-`codex-image` is a CLI for logging in with device-code OAuth, checking machine-readable auth status, generating images, and clearing local auth state.
+`codex-image` is a CLI for logging in with OpenAI OAuth, checking machine-readable auth status, generating images, and clearing local auth state.
 
 After reading this README, you should be able to install the binary locally, verify auth status, run a generation, and find the guarded live UAT smoke runbook.
 
@@ -22,13 +22,13 @@ codex-image --help
 
 ### 1) Login
 
-Start device-code login:
+Start OAuth login:
 
 ```bash
 codex-image login
 ```
 
-Complete the browser/device-code prompt shown by the CLI.
+Complete the browser login shown by the CLI. The browser redirects to the local callback path printed by the command.
 
 ### 2) Check auth status (machine-readable contract)
 

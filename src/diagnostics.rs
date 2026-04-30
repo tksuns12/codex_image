@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::auth::device::DeviceLoginError;
+use crate::auth::oauth::OAuthLoginError;
 use crate::auth::store::StoreError;
 use crate::config::ConfigError;
 
@@ -52,6 +53,8 @@ pub enum CliError {
     AuthExpired,
     #[error("auth state invalid")]
     AuthInvalidState,
+    #[error("OAuth login error")]
+    OAuthLogin(#[from] OAuthLoginError),
     #[error("device login error")]
     DeviceLogin(#[from] DeviceLoginError),
     #[error("image generation API request failed")]
@@ -154,6 +157,44 @@ impl CliError {
                 hint:
                     "Try logging in again; if it persists, report the issue with request context.",
                 exit_code: ExitCode::ResponseContract,
+            },
+            Self::OAuthLogin(
+                OAuthLoginError::AuthorizeUrl
+                | OAuthLoginError::CallbackBind
+                | OAuthLoginError::Callback
+                | OAuthLoginError::TokenExchangeApi,
+            ) => ErrorClassification {
+                code: "api.auth_service_request_failed",
+                message: "authentication service request failed",
+                recoverable: true,
+                hint: "Retry login in a moment.",
+                exit_code: ExitCode::Api,
+            },
+            Self::OAuthLogin(
+                OAuthLoginError::CallbackTimeout | OAuthLoginError::TokenExchangeTimeout,
+            ) => ErrorClassification {
+                code: "api.auth_timeout",
+                message: "authentication service request failed",
+                recoverable: true,
+                hint: "Retry login in a moment.",
+                exit_code: ExitCode::Api,
+            },
+            Self::OAuthLogin(
+                OAuthLoginError::CallbackState | OAuthLoginError::TokenExchangeContract,
+            ) => ErrorClassification {
+                code: "response_contract.oauth_token",
+                message: "authentication service response did not match expected schema",
+                recoverable: false,
+                hint:
+                    "Try logging in again; if it persists, report the issue with request context.",
+                exit_code: ExitCode::ResponseContract,
+            },
+            Self::OAuthLogin(OAuthLoginError::InstructionWrite) => ErrorClassification {
+                code: "filesystem.stderr_write_failed",
+                message: "failed to write login instructions",
+                recoverable: true,
+                hint: "Ensure stdout/stderr are writable and retry.",
+                exit_code: ExitCode::Filesystem,
             },
             Self::DeviceLogin(
                 DeviceLoginError::UserCodeApi

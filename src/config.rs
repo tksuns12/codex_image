@@ -11,7 +11,7 @@ pub const ENV_CLIENT_ID: &str = "CODEX_IMAGE_CLIENT_ID";
 
 const DEFAULT_AUTH_BASE_URL: &str = "https://auth.openai.com";
 const DEFAULT_API_BASE_URL: &str = "https://api.openai.com";
-const DEFAULT_CLIENT_ID: &str = "codex-image";
+const DEFAULT_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 
 #[derive(Debug, Clone)]
 pub struct AuthConfig {

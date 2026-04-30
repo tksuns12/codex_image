@@ -6,7 +6,7 @@ use reqwest::Client;
 use serde::Serialize;
 
 use crate::auth::{
-    get_access_token_or_error, login_device_code, status_for_cli, AuthStore, DeviceLoginPollPolicy,
+    get_access_token_or_error, login_oauth_callback, status_for_cli, AuthStore, OAuthLoginPolicy,
 };
 use crate::config::{AuthConfig, GenerateConfig};
 use crate::diagnostics::CliError;
@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Login via device-code OAuth flow.
+    /// Login via OpenAI OAuth callback flow.
     Login,
     /// Print machine-readable auth status.
     Status {
@@ -83,9 +83,9 @@ async fn login() -> Result<(), CliError> {
     let config = AuthConfig::from_env()?;
     let auth_store = AuthStore::from_config(&config)?;
     let http_client = Client::new();
-    let poll_policy = DeviceLoginPollPolicy::production();
+    let login_policy = OAuthLoginPolicy::production();
 
-    let auth = login_device_code(&config, &http_client, &poll_policy, io::stdout()).await?;
+    let auth = login_oauth_callback(&config, &http_client, &login_policy, io::stdout()).await?;
     auth_store.save(&auth)?;
 
     println!("Login successful.");
