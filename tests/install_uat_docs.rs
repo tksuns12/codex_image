@@ -4,7 +4,22 @@ fn readme_covers_install_usage_and_codex_backend() {
 
     assert!(
         readme.contains("cargo install --path ."),
-        "README must document local install command"
+        "README must document local source install fallback"
+    );
+    assert!(
+        readme.contains("actions/workflows/release.yml/badge.svg?branch=release"),
+        "README must include release workflow badge scoped to release branch"
+    );
+    assert!(
+        readme.contains("releases/download/${VERSION}/${ASSET}"),
+        "README must document release artifact downloads as the primary install path"
+    );
+    assert!(
+        readme.contains("x86_64-unknown-linux-gnu")
+            && readme.contains("x86_64-apple-darwin")
+            && readme.contains("aarch64-apple-darwin")
+            && readme.contains("x86_64-pc-windows-msvc"),
+        "README must document platform release artifact targets"
     );
     assert!(
         readme.contains("codex-image"),
@@ -31,6 +46,10 @@ fn readme_covers_install_usage_and_codex_backend() {
         "README must document release branch and semver automation"
     );
     assert!(
+        readme.contains("Release / Preflight") && readme.contains("Require pull requests"),
+        "README must document release branch protection expectations"
+    );
+    assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
             && !readme.contains("status --json")
@@ -45,7 +64,22 @@ fn korean_readme_covers_install_usage_and_codex_backend() {
 
     assert!(
         readme.contains("cargo install --path ."),
-        "Korean README must document local install command"
+        "Korean README must document local source install fallback"
+    );
+    assert!(
+        readme.contains("actions/workflows/release.yml/badge.svg?branch=release"),
+        "Korean README must include release workflow badge scoped to release branch"
+    );
+    assert!(
+        readme.contains("releases/download/${VERSION}/${ASSET}"),
+        "Korean README must document release artifact downloads as the primary install path"
+    );
+    assert!(
+        readme.contains("x86_64-unknown-linux-gnu")
+            && readme.contains("x86_64-apple-darwin")
+            && readme.contains("aarch64-apple-darwin")
+            && readme.contains("x86_64-pc-windows-msvc"),
+        "Korean README must document platform release artifact targets"
     );
     assert!(
         readme.contains("codex-image"),
@@ -70,6 +104,10 @@ fn korean_readme_covers_install_usage_and_codex_backend() {
     assert!(
         readme.contains("release-please") && readme.contains("release` 브랜치"),
         "Korean README must document release branch and semver automation"
+    );
+    assert!(
+        readme.contains("Release / Preflight") && readme.contains("pull request"),
+        "Korean README must document release branch protection expectations"
     );
     assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")

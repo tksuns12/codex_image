@@ -3,12 +3,26 @@ fn release_workflow_is_scoped_to_release_branch_and_release_please() {
     let workflow = include_str!("../.github/workflows/release.yml");
 
     assert!(
-        workflow.contains("branches:\n      - release"),
-        "release workflow must only trigger from the release branch"
+        workflow.contains("pull_request:\n    branches:\n      - release"),
+        "release workflow must run preflight on pull requests into release"
+    );
+    assert!(
+        workflow.contains("push:\n    branches:\n      - release"),
+        "release workflow must publish only from pushes to release"
     );
     assert!(
         workflow.contains("googleapis/release-please-action@v4"),
         "release workflow must delegate semver/release PRs to release-please"
+    );
+    assert!(
+        workflow.contains("if: ${{ github.event_name == 'push' }}"),
+        "release-please must not run on pull request preflight checks"
+    );
+    assert!(
+        workflow.contains("contents: read")
+            && workflow.contains("contents: write")
+            && workflow.contains("pull-requests: write"),
+        "release workflow permissions must default to read and elevate only release jobs"
     );
     assert!(
         workflow.contains("release-type: rust"),
