@@ -54,6 +54,16 @@ pub enum CliError {
     AuthInvalidState,
     #[error("device login error")]
     DeviceLogin(#[from] DeviceLoginError),
+    #[error("image generation API request failed")]
+    ImageGenerationApi { source_message: String },
+    #[error("image generation API timeout")]
+    ImageGenerationTimeout { source_message: String },
+    #[error("generated output write failed")]
+    OutputWriteFailed,
+    #[error("generated output verification failed")]
+    OutputVerificationFailed,
+    #[error("image generation response contract failure")]
+    ImageGenerationResponseContract { source_message: String },
     #[error("login flow not implemented")]
     LoginNotImplemented,
 }
@@ -185,6 +195,29 @@ impl CliError {
                 recoverable: true,
                 hint: "Ensure stdout/stderr are writable and retry.",
                 exit_code: ExitCode::Filesystem,
+            },
+            Self::ImageGenerationApi { .. } | Self::ImageGenerationTimeout { .. } => {
+                ErrorClassification {
+                    code: "api.image_generation_failed",
+                    message: "image generation request failed",
+                    recoverable: true,
+                    hint: "Retry image generation in a moment.",
+                    exit_code: ExitCode::Api,
+                }
+            }
+            Self::OutputWriteFailed | Self::OutputVerificationFailed => ErrorClassification {
+                code: "filesystem.output_write_failed",
+                message: "failed to write generated image output",
+                recoverable: true,
+                hint: "Ensure output paths are writable and retry.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::ImageGenerationResponseContract { .. } => ErrorClassification {
+                code: "response_contract.image_generation",
+                message: "image generation response did not match expected schema",
+                recoverable: false,
+                hint: "Try again; if it persists, report the issue with request context.",
+                exit_code: ExitCode::ResponseContract,
             },
             Self::LoginNotImplemented => ErrorClassification {
                 code: "unknown",

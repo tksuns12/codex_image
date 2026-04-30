@@ -147,6 +147,80 @@ fn diagnostics_device_contract_error_maps_to_response_contract_without_raw_body(
 }
 
 #[test]
+fn diagnostics_image_api_failure_maps_to_api_exit_and_redacts_source() {
+    let err = CliError::ImageGenerationApi {
+        source_message: "Bearer sk-test-secret raw upstream body".to_string(),
+    };
+
+    assert_eq!(err.exit_code(), ExitCode::Api);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "api.image_generation_failed");
+    assert_eq!(json["error"]["message"], "image generation request failed");
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(json["error"]["hint"], "Retry image generation in a moment.");
+
+    let rendered = serde_json::to_string(&json).unwrap();
+    assert!(!rendered.contains("Bearer"));
+    assert!(!rendered.contains("sk-test-secret"));
+    assert!(!rendered.contains("raw upstream body"));
+}
+
+#[test]
+fn diagnostics_image_timeout_maps_to_api_exit() {
+    let err = CliError::ImageGenerationTimeout {
+        source_message: "timeout waiting for api.openai.com".to_string(),
+    };
+
+    assert_eq!(err.exit_code(), ExitCode::Api);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "api.image_generation_failed");
+    assert_eq!(json["error"]["message"], "image generation request failed");
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(json["error"]["hint"], "Retry image generation in a moment.");
+}
+
+#[test]
+fn diagnostics_output_write_or_verify_failures_map_to_filesystem_exit() {
+    let write_err = CliError::OutputWriteFailed;
+    let write_json = parse_envelope(&write_err);
+    assert_eq!(write_err.exit_code(), ExitCode::Filesystem);
+    assert_eq!(write_json["error"]["code"], "filesystem.output_write_failed");
+    assert_eq!(write_json["error"]["message"], "failed to write generated image output");
+
+    let verify_err = CliError::OutputVerificationFailed;
+    let verify_json = parse_envelope(&verify_err);
+    assert_eq!(verify_err.exit_code(), ExitCode::Filesystem);
+    assert_eq!(verify_json["error"]["code"], "filesystem.output_write_failed");
+    assert_eq!(verify_json["error"]["message"], "failed to write generated image output");
+}
+
+#[test]
+fn diagnostics_image_response_contract_maps_to_response_contract_exit() {
+    let err = CliError::ImageGenerationResponseContract {
+        source_message: "unexpected b64_json length mismatch".to_string(),
+    };
+
+    assert_eq!(err.exit_code(), ExitCode::ResponseContract);
+
+    let json = parse_envelope(&err);
+    assert_eq!(json["error"]["code"], "response_contract.image_generation");
+    assert_eq!(
+        json["error"]["message"],
+        "image generation response did not match expected schema"
+    );
+    assert_eq!(json["error"]["recoverable"], false);
+    assert_eq!(
+        json["error"]["hint"],
+        "Try again; if it persists, report the issue with request context."
+    );
+
+    let rendered = serde_json::to_string(&json).unwrap();
+    assert!(!rendered.contains("b64_json"));
+}
+
+#[test]
 fn diagnostics_unknown_fallback_is_stable() {
     let err = CliError::LoginNotImplemented;
 
@@ -216,6 +290,17 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::AuthInvalidState,
         CliError::DeviceLogin(DeviceLoginError::UserCodeApi),
         CliError::DeviceLogin(DeviceLoginError::TokenExchangeContract),
+        CliError::ImageGenerationApi {
+            source_message: "Bearer sk-ignored".to_string(),
+        },
+        CliError::ImageGenerationTimeout {
+            source_message: "timeout".to_string(),
+        },
+        CliError::OutputWriteFailed,
+        CliError::OutputVerificationFailed,
+        CliError::ImageGenerationResponseContract {
+            source_message: "b64_json".to_string(),
+        },
         CliError::LoginNotImplemented,
     ];
 
