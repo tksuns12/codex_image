@@ -1,5 +1,5 @@
 #[test]
-fn readme_covers_install_usage_and_codex_backend() {
+fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
     let readme = include_str!("../README.md");
 
     assert!(
@@ -59,7 +59,7 @@ fn readme_covers_install_usage_and_codex_backend() {
 }
 
 #[test]
-fn korean_readme_covers_install_usage_and_codex_backend() {
+fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
     let readme = include_str!("../README.ko.md");
 
     assert!(
@@ -119,7 +119,7 @@ fn korean_readme_covers_install_usage_and_codex_backend() {
 }
 
 #[test]
-fn scripts_document_codex_backend_and_live_guard() {
+fn install_uat_docs_scripts_document_codex_backend_and_live_guard() {
     let verify_local_install = include_str!("../scripts/verify-local-install.sh");
     let uat_live_smoke = include_str!("../scripts/uat-live-smoke.sh");
 
@@ -145,7 +145,7 @@ fn scripts_document_codex_backend_and_live_guard() {
 }
 
 #[test]
-fn uat_doc_describes_codex_only_backend() {
+fn install_uat_docs_uat_doc_describes_codex_only_backend() {
     let runbook = include_str!("../docs/uat-live-smoke.md");
 
     assert!(

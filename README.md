@@ -117,6 +117,15 @@ Example stdout shape:
 }
 ```
 
+## Skill path support matrix (M002/S01 contract)
+
+S01 defines the supported `SKILL.md` path contract for downstream installer and UX slices. This slice documents and tests the matrix only; it does **not** claim that `codex-image skill install` is already implemented.
+
+Canonical matrix and source evidence: [docs/skill-paths.md](docs/skill-paths.md)
+
+When authoring `SKILL.md` content for the supported tools, follow the OpenAI prompt guide used by this project:
+- https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide
+
 ## Environment
 
 - `CODEX_IMAGE_CODEX_BIN` optionally points to the Codex executable.
