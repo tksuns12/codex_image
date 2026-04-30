@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
@@ -199,6 +199,6 @@ fn is_safe_format(format: &str) -> bool {
     !format.is_empty() && format.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
-fn path_to_string(path: &PathBuf) -> String {
+fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }

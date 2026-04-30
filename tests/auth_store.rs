@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use chrono::{TimeDelta, Utc};
@@ -176,7 +175,7 @@ fn auth_store_save_writes_atomically_and_preserves_existing_on_failure() {
 #[test]
 fn auth_store_load_missing_file_returns_none() {
     let temp = TempDir::new().unwrap();
-    let store = AuthStore::new(PathBuf::from(temp.path().join("missing.json")));
+    let store = AuthStore::new(temp.path().join("missing.json"));
     let loaded = store.load().unwrap();
     assert!(loaded.is_none());
 }

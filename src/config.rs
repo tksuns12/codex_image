@@ -9,7 +9,7 @@ pub const ENV_AUTH_BASE_URL: &str = "CODEX_IMAGE_AUTH_BASE_URL";
 pub const ENV_API_BASE_URL: &str = "CODEX_IMAGE_API_BASE_URL";
 pub const ENV_CLIENT_ID: &str = "CODEX_IMAGE_CLIENT_ID";
 
-const DEFAULT_AUTH_BASE_URL: &str = "https://api.openai.com";
+const DEFAULT_AUTH_BASE_URL: &str = "https://auth.openai.com";
 const DEFAULT_API_BASE_URL: &str = "https://api.openai.com";
 const DEFAULT_CLIENT_ID: &str = "codex-image";
 
@@ -143,6 +143,17 @@ mod tests {
                 key: ENV_API_BASE_URL
             })
         ));
+    }
+
+    #[test]
+    fn auth_base_url_defaults_to_openai_auth() {
+        let _guard = env_lock();
+        std::env::remove_var(ENV_AUTH_BASE_URL);
+        std::env::remove_var(ENV_CLIENT_ID);
+
+        let result = AuthConfig::from_env().expect("default auth config should parse");
+
+        assert_eq!(result.auth_base_url.as_str(), "https://auth.openai.com/");
     }
 
     #[test]

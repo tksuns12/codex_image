@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use codex_image::auth::device::{login_device_code, DeviceLoginError, DeviceLoginPollPolicy};
@@ -21,11 +21,6 @@ fn base_config(server: &MockServer) -> AuthConfig {
 fn no_sleep_policy(max_attempts: usize) -> DeviceLoginPollPolicy {
     DeviceLoginPollPolicy::new(max_attempts, Duration::from_secs(0), |_| Box::pin(async {}))
         .with_request_timeout(Duration::from_secs(2))
-}
-
-fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
 }
 
 fn token_response() -> String {
@@ -56,7 +51,6 @@ impl Respond for PendingThenSuccess {
 
 #[tokio::test]
 async fn device_code_success_returns_auth_and_prints_only_instructions() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -109,7 +103,6 @@ async fn device_code_success_returns_auth_and_prints_only_instructions() {
 
 #[tokio::test]
 async fn device_code_poll_pending_403_and_404_then_success() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -154,7 +147,6 @@ async fn device_code_poll_pending_403_and_404_then_success() {
 
 #[tokio::test]
 async fn device_code_poll_missing_code_verifier_fails_closed() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -189,7 +181,6 @@ async fn device_code_poll_missing_code_verifier_fails_closed() {
 
 #[tokio::test]
 async fn device_code_token_endpoint_500_is_redacted_error() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -233,7 +224,6 @@ async fn device_code_token_endpoint_500_is_redacted_error() {
 
 #[tokio::test]
 async fn device_code_token_endpoint_invalid_json_returns_contract_error() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -274,7 +264,6 @@ async fn device_code_token_endpoint_invalid_json_returns_contract_error() {
 
 #[tokio::test]
 async fn device_code_malformed_responses_fail_closed() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -299,7 +288,6 @@ async fn device_code_malformed_responses_fail_closed() {
 
 #[tokio::test]
 async fn device_code_missing_required_token_fields_fails_closed_without_leaking() {
-    let _guard = lock_env();
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
