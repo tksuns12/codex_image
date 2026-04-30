@@ -23,11 +23,52 @@ fn readme_covers_install_usage_and_codex_backend() {
         "README must document Codex binary override"
     );
     assert!(
+        readme.contains("README.ko.md"),
+        "README must link to the Korean translation"
+    );
+    assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
             && !readme.contains("status --json")
             && !readme.contains("codex-image login"),
         "README must not document removed URL/auth surfaces"
+    );
+}
+
+#[test]
+fn korean_readme_covers_install_usage_and_codex_backend() {
+    let readme = include_str!("../README.ko.md");
+
+    assert!(
+        readme.contains("cargo install --path ."),
+        "Korean README must document local install command"
+    );
+    assert!(
+        readme.contains("codex-image"),
+        "Korean README must name the binary"
+    );
+    assert!(
+        readme.contains("Codex CLI") || readme.contains("Codex 설치"),
+        "Korean README must document the Codex dependency"
+    );
+    assert!(
+        readme.contains("generate"),
+        "Korean README must describe generate usage"
+    );
+    assert!(
+        readme.contains("CODEX_IMAGE_CODEX_BIN"),
+        "Korean README must document Codex binary override"
+    );
+    assert!(
+        readme.contains("README.md"),
+        "Korean README must link back to the English README"
+    );
+    assert!(
+        !readme.contains("CODEX_IMAGE_API_BASE_URL")
+            && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
+            && !readme.contains("status --json")
+            && !readme.contains("codex-image login"),
+        "Korean README must not document removed URL/auth surfaces"
     );
 }
 

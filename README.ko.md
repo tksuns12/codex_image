@@ -1,0 +1,98 @@
+# codex-image
+
+[English](README.md)
+
+`codex-image`는 설치된 Codex CLI에 이미지 생성을 맡기는 작은 CLI입니다. Codex의 내장 이미지 도구로 이미지를 생성한 뒤, 결과 파일을 지정한 출력 디렉터리로 복사하고 매니페스트를 작성합니다.
+
+이 도구는 자체 OpenAI OAuth 흐름을 구현하지 않습니다. URL로 설정하는 이미지 API 엔드포인트를 호출하지 않습니다. Codex 인증 파일을 읽거나 변경하지도 않습니다. 로그인과 이미지 생성 권한은 Codex가 직접 소유합니다.
+
+## 설치
+
+저장소 루트에서 실행합니다.
+
+```bash
+cargo install --path . --force
+```
+
+설치된 바이너리를 확인합니다.
+
+```bash
+codex-image --help
+```
+
+## 사전 요구 사항: Codex CLI
+
+`codex-image generate`는 정상 동작하는 Codex 설치가 필요합니다. Codex 실행 파일은 다음 순서로 찾습니다.
+
+1. `CODEX_IMAGE_CODEX_BIN`이 설정되어 있으면 그 값을 사용합니다.
+2. `PATH`에 있는 `codex`를 사용합니다.
+3. VS Code/Cursor 확장에서 흔히 쓰이는 Codex 설치 위치를 확인합니다.
+
+Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구를 사용할 수 있어야 합니다.
+
+## 이미지와 매니페스트 생성
+
+출력 디렉터리를 지정해 생성을 실행합니다.
+
+```bash
+codex-image generate "도서관에서 책을 읽는 수채화풍 여우" --out ./out
+```
+
+이 명령은 다음 작업을 수행합니다.
+
+1. `codex exec`를 실행합니다.
+2. Codex에 내장 이미지 생성 도구 사용을 지시합니다.
+3. 생성된 이미지 경로가 담긴 Codex의 최종 JSON 응답을 읽습니다.
+4. 생성된 파일을 `--out` 아래 `image-0001.<format>` 이름으로 복사합니다.
+5. `--out` 아래 `manifest.json`을 작성합니다.
+6. 매니페스트 JSON을 stdout으로 출력합니다.
+
+stdout 예시 형식:
+
+```json
+{
+  "prompt": "도서관에서 책을 읽는 수채화풍 여우",
+  "model": "gpt-image-2",
+  "manifest_path": "./out/manifest.json",
+  "images": [
+    {
+      "index": 1,
+      "path": "./out/image-0001.png",
+      "format": "png",
+      "byte_count": 12345
+    }
+  ],
+  "response": {
+    "created": 1777523488,
+    "usage": {}
+  }
+}
+```
+
+## 환경 변수
+
+- `CODEX_IMAGE_CODEX_BIN`은 선택 사항이며, Codex 실행 파일 경로를 지정합니다.
+
+URL 기반 환경 변수는 지원하지 않습니다. 별도의 인증/API 동작도 없습니다.
+
+## 검증 스크립트
+
+### 로컬 설치 검증
+
+```bash
+bash scripts/verify-local-install.sh
+```
+
+이 스크립트는 실제 이미지 생성을 요구하지 않고 `cargo install --path .`, 설치된 바이너리 실행, help/usage 동작을 검증합니다.
+
+### Live UAT smoke
+
+실제 Codex 기반 이미지 생성을 의도적으로 확인할 때만 실행합니다.
+
+```bash
+CODEX_IMAGE_RUN_LIVE=1 bash scripts/uat-live-smoke.sh
+```
+
+라이브 스크립트는 보호되어 있으며, `CODEX_IMAGE_RUN_LIVE=1`이 설정되지 않으면 즉시 종료합니다.
+
+사용 전 전체 런북을 읽으세요: [docs/uat-live-smoke.md](docs/uat-live-smoke.md)
