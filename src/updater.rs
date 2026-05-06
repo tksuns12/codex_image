@@ -20,7 +20,7 @@ impl ArchiveKind {
         }
     }
 
-    fn strip_extension<'a>(self, name: &'a str) -> Option<&'a str> {
+    fn strip_extension(self, name: &str) -> Option<&str> {
         match self {
             Self::TarGz => name.strip_suffix(".tar.gz"),
             Self::Zip => name.strip_suffix(".zip"),
@@ -532,10 +532,10 @@ fn validate_tar_gz_archive(
     let decoder = flate2::read::GzDecoder::new(Cursor::new(bytes));
     let mut archive = tar::Archive::new(decoder);
 
-    let mut entries = archive.entries().map_err(|_| UpdateError::ArchiveInvalid)?;
+    let entries = archive.entries().map_err(|_| UpdateError::ArchiveInvalid)?;
     let mut state = ValidationState::new(archive_kind, expected_binary_name);
 
-    while let Some(next) = entries.next() {
+    for next in entries {
         let mut entry = next.map_err(|_| UpdateError::ArchiveInvalid)?;
         if !entry.header().entry_type().is_file() {
             continue;

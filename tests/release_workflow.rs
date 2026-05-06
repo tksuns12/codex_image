@@ -1,3 +1,5 @@
+use codex_image::updater::{release_asset_name_for_tag, Platform};
+
 #[test]
 fn release_workflow_is_scoped_to_release_branch_and_release_please() {
     let workflow = include_str!("../.github/workflows/release.yml");
@@ -82,4 +84,81 @@ fn release_workflow_builds_expected_platform_artifacts() {
         workflow.contains("--clobber"),
         "release workflow reruns should replace existing failed-run artifacts"
     );
+}
+
+#[test]
+fn release_workflow_targets_have_updater_mapping_and_naming_contract() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let workflow_targets = workflow_matrix_targets(workflow);
+
+    assert_eq!(
+        workflow_targets,
+        vec![
+            "x86_64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+        ],
+        "matrix target list changed; update updater mapping and this contract test together"
+    );
+
+    for target in workflow_targets {
+        let platform = workflow_target_to_platform(target)
+            .unwrap_or_else(|reason| panic!("workflow target {target} has no updater mapping: {reason}"));
+
+        assert_eq!(
+            platform.rust_target(),
+            target,
+            "updater rust target must match workflow target exactly"
+        );
+
+        let asset = release_asset_name_for_tag("v9.9.9", &platform);
+        let expected_extension = if target.ends_with("-pc-windows-msvc") {
+            ".zip"
+        } else {
+            ".tar.gz"
+        };
+
+        assert!(
+            asset == format!("codex-image-v9.9.9-{target}{expected_extension}"),
+            "updater asset naming drifted for {target}: {asset}"
+        );
+    }
+}
+
+#[test]
+fn unsupported_future_release_target_is_explicit_contract_break() {
+    let err = workflow_target_to_platform("aarch64-unknown-linux-gnu")
+        .expect_err("unsupported release target must fail until updater mapping is added");
+
+    assert!(
+        err.contains("unsupported updater platform"),
+        "unexpected error message: {err}"
+    );
+}
+
+fn workflow_matrix_targets(workflow: &str) -> Vec<&str> {
+    workflow
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("target: "))
+        .collect()
+}
+
+fn workflow_target_to_platform(target: &str) -> Result<Platform, String> {
+    let (os, arch) = parse_target_os_arch(target)
+        .ok_or_else(|| format!("target triple format not recognized: {target}"))?;
+
+    Platform::new(os, arch)
+        .map_err(|_| format!("unsupported updater platform {os}/{arch} for target {target}"))
+}
+
+fn parse_target_os_arch(target: &str) -> Option<(&'static str, &'static str)> {
+    match target {
+        "x86_64-unknown-linux-gnu" => Some(("linux", "x86_64")),
+        "x86_64-apple-darwin" => Some(("macos", "x86_64")),
+        "aarch64-apple-darwin" => Some(("macos", "aarch64")),
+        "x86_64-pc-windows-msvc" => Some(("windows", "x86_64")),
+        "aarch64-unknown-linux-gnu" => Some(("linux", "aarch64")),
+        _ => None,
+    }
 }

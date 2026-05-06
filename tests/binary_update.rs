@@ -523,9 +523,8 @@ impl FakeSource {
 
 impl UpdateSource for FakeSource {
     fn fetch_release(&self, requested_version: Option<&str>) -> Result<codex_image::updater::ReleaseMetadata, UpdateError> {
-        match requested_version {
-            Some(version) => assert_eq!(version, "v1.2.3"),
-            None => {}
+        if let Some(version) = requested_version {
+            assert_eq!(version, "v1.2.3");
         }
 
         self.release_results
@@ -643,10 +642,10 @@ fn raw_tar_with_single_file(path: &str, content: &[u8], mode: u32) -> Vec<u8> {
     tar_bytes.extend_from_slice(content);
 
     let file_padding = (512 - (content.len() % 512)) % 512;
-    tar_bytes.extend(std::iter::repeat(0).take(file_padding));
+    tar_bytes.extend(std::iter::repeat_n(0, file_padding));
 
     // End-of-archive marker: two all-zero blocks.
-    tar_bytes.extend(std::iter::repeat(0).take(1024));
+    tar_bytes.extend(std::iter::repeat_n(0, 1024));
     tar_bytes
 }
 

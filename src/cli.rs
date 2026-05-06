@@ -355,6 +355,7 @@ fn skill_command_with_selector(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn install_skill_command_with_selector_and_project_root(
     tools: &[ToolArg],
     scopes: &[ScopeArg],
@@ -378,6 +379,7 @@ fn install_skill_command_with_selector_and_project_root(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn skill_command_with_selector_and_project_root(
     operation: SkillCommandOperation,
     tools: &[ToolArg],
