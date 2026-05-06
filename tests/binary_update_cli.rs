@@ -102,7 +102,10 @@ fn update_cli_helper_dry_run_validates_without_replacement() {
     assert_eq!(source.last_requested_version(), Some("v1.2.3".to_string()));
     assert_eq!(source.download_calls(), 1);
     assert_eq!(installer.calls(), 0, "dry-run must not replace binary");
-    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old-binary");
+    assert_eq!(
+        std::fs::read(&binary_path).expect("read binary"),
+        b"old-binary"
+    );
 }
 
 #[test]
@@ -226,7 +229,10 @@ impl FakeSource {
 }
 
 impl UpdateSource for FakeSource {
-    fn fetch_release(&self, requested_version: Option<&str>) -> Result<ReleaseMetadata, UpdateError> {
+    fn fetch_release(
+        &self,
+        requested_version: Option<&str>,
+    ) -> Result<ReleaseMetadata, UpdateError> {
         self.requested_versions
             .lock()
             .expect("lock")
