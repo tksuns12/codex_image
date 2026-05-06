@@ -1,6 +1,7 @@
 use std::fs;
 
 use assert_cmd::Command;
+use codex_image::skill_installer::{managed_marker_line, render_skill_body};
 use serde_json::Value;
 use tempfile::tempdir;
 
@@ -348,6 +349,138 @@ fn skill_install_cli_partial_flags_and_no_target_non_tty_fail_without_writes() {
         !target.exists(),
         "filesystem writes must not happen when no non-interactive target flags are selected"
     );
+}
+
+#[test]
+fn skill_install_cli_update_updates_outdated_managed_file_then_noops_when_current() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+
+    let mut install = Command::cargo_bin("codex-image").expect("binary exists");
+    let install_output = install
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("install")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("seed install runs");
+    assert!(install_output.status.success());
+
+    let target = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+
+    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (old)");
+    let outdated_content = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
+    fs::write(&target, outdated_content).expect("seed outdated managed content");
+
+    let mut first_update = Command::cargo_bin("codex-image").expect("binary exists");
+    let first_update_output = first_update
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("update")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("first update runs");
+
+    assert!(
+        first_update_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first_update_output.stderr)
+    );
+    let first_update_json = parse_json_line(first_update_output.stdout);
+    assert_eq!(first_update_json["status"], "updated");
+
+    let mut second_update = Command::cargo_bin("codex-image").expect("binary exists");
+    let second_update_output = second_update
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("update")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("second update runs");
+
+    assert!(second_update_output.status.success());
+    let second_update_json = parse_json_line(second_update_output.stdout);
+    assert_eq!(second_update_json["status"], "unchanged");
+}
+
+#[test]
+fn skill_install_cli_update_missing_confirmation_and_manual_block_emit_update_diagnostics() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+
+    let target = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+
+    let mut missing_yes = Command::cargo_bin("codex-image").expect("binary exists");
+    let missing_yes_output = missing_yes
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("update")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .env("HOME", home.path())
+        .output()
+        .expect("missing yes command runs");
+
+    assert_eq!(missing_yes_output.status.code(), Some(2));
+    let missing_yes_json = parse_json_line(missing_yes_output.stderr);
+    assert_eq!(
+        missing_yes_json["error"]["code"],
+        "usage.update_confirmation_required"
+    );
+
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+    fs::write(&target, "# custom skill\nBearer do-not-print\n").expect("seed manual skill");
+
+    let mut blocked = Command::cargo_bin("codex-image").expect("binary exists");
+    let blocked_output = blocked
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("update")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("blocked update command runs");
+
+    assert_eq!(blocked_output.status.code(), Some(5));
+    let blocked_json = parse_json_line(blocked_output.stderr);
+    assert_eq!(
+        blocked_json["error"]["code"],
+        "filesystem.skill_update_blocked_manual_edit"
+    );
+
+    let rendered = serde_json::to_string(&blocked_json).expect("json serializes");
+    assert!(!rendered.contains("Bearer"));
 }
 
 #[test]

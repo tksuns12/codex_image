@@ -62,6 +62,18 @@ pub enum CliError {
     InteractiveInstallPromptFailed,
     #[error("interactive install target selection was empty")]
     InteractiveInstallSelectionEmpty,
+    #[error("missing required skill update confirmation")]
+    MissingUpdateConfirmation,
+    #[error("partial update target selection")]
+    PartialUpdateTargetSelection,
+    #[error("no update targets selected in non-interactive mode")]
+    NoUpdateTargetsInNonInteractiveMode,
+    #[error("interactive update target selection was cancelled")]
+    InteractiveUpdateSelectionCancelled,
+    #[error("interactive update prompt failed")]
+    InteractiveUpdatePromptFailed,
+    #[error("interactive update target selection was empty")]
+    InteractiveUpdateSelectionEmpty,
     #[error("HOME is unavailable")]
     HomeUnavailable,
     #[error("current working directory is unavailable")]
@@ -70,6 +82,10 @@ pub enum CliError {
     SkillInstallWriteFailed,
     #[error("skill install blocked by existing manual edit")]
     SkillInstallBlockedManualEdit,
+    #[error("skill update write failed")]
+    SkillUpdateWriteFailed,
+    #[error("skill update blocked by existing manual edit")]
+    SkillUpdateBlockedManualEdit,
     #[error("unexpected failure")]
     Unknown,
 }
@@ -174,6 +190,48 @@ impl CliError {
                 hint: "Select at least one target with Space before pressing Enter.",
                 exit_code: ExitCode::UsageOrConfig,
             },
+            Self::MissingUpdateConfirmation => ErrorClassification {
+                code: "usage.update_confirmation_required",
+                message: "skill update requires explicit confirmation",
+                recoverable: true,
+                hint: "Re-run with --yes to confirm non-interactive update.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::PartialUpdateTargetSelection => ErrorClassification {
+                code: "usage.update_partial_target_selection",
+                message: "skill update target selection is incomplete",
+                recoverable: true,
+                hint: "Provide at least one --tool and one --scope for non-interactive updates.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::NoUpdateTargetsInNonInteractiveMode => ErrorClassification {
+                code: "usage.update_no_targets_non_interactive",
+                message: "no non-interactive update targets were selected",
+                recoverable: true,
+                hint: "Provide --tool and --scope flags with --yes, or run in an interactive terminal.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveUpdateSelectionCancelled => ErrorClassification {
+                code: "usage.update_interactive_selection_cancelled",
+                message: "interactive update selection was cancelled",
+                recoverable: true,
+                hint: "Re-run and confirm at least one target with Enter.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveUpdatePromptFailed => ErrorClassification {
+                code: "usage.update_interactive_prompt_unavailable",
+                message: "interactive update prompt is unavailable",
+                recoverable: true,
+                hint: "Use --tool/--scope with --yes when running non-interactively.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveUpdateSelectionEmpty => ErrorClassification {
+                code: "usage.update_interactive_selection_empty",
+                message: "interactive update selection was empty",
+                recoverable: true,
+                hint: "Select at least one target with Space before pressing Enter.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
             Self::HomeUnavailable => ErrorClassification {
                 code: "config.home_unavailable",
                 message: "HOME is unavailable for global skill installation",
@@ -197,6 +255,20 @@ impl CliError {
             },
             Self::SkillInstallBlockedManualEdit => ErrorClassification {
                 code: "filesystem.skill_install_blocked_manual_edit",
+                message: "existing SKILL.md is manual or tampered",
+                recoverable: true,
+                hint: "Re-run with --force to overwrite the existing file.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::SkillUpdateWriteFailed => ErrorClassification {
+                code: "filesystem.skill_update_write_failed",
+                message: "failed to refresh managed SKILL.md",
+                recoverable: true,
+                hint: "Ensure target directories are writable and retry.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::SkillUpdateBlockedManualEdit => ErrorClassification {
+                code: "filesystem.skill_update_blocked_manual_edit",
                 message: "existing SKILL.md is manual or tampered",
                 recoverable: true,
                 hint: "Re-run with --force to overwrite the existing file.",

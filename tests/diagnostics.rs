@@ -222,6 +222,83 @@ fn diagnostics_skill_install_confirmation_target_selection_home_and_write_failur
 }
 
 #[test]
+fn diagnostics_skill_update_confirmation_target_selection_and_filesystem_failures_are_redacted() {
+    let missing_yes = CliError::MissingUpdateConfirmation;
+    assert_eq!(missing_yes.exit_code(), ExitCode::UsageOrConfig);
+    let missing_yes_json = parse_envelope(&missing_yes);
+    assert_eq!(
+        missing_yes_json["error"]["code"],
+        "usage.update_confirmation_required"
+    );
+    assert_eq!(
+        missing_yes_json["error"]["hint"],
+        "Re-run with --yes to confirm non-interactive update."
+    );
+
+    let partial_targets = CliError::PartialUpdateTargetSelection;
+    assert_eq!(partial_targets.exit_code(), ExitCode::UsageOrConfig);
+    let partial_targets_json = parse_envelope(&partial_targets);
+    assert_eq!(
+        partial_targets_json["error"]["code"],
+        "usage.update_partial_target_selection"
+    );
+
+    let no_targets = CliError::NoUpdateTargetsInNonInteractiveMode;
+    assert_eq!(no_targets.exit_code(), ExitCode::UsageOrConfig);
+    let no_targets_json = parse_envelope(&no_targets);
+    assert_eq!(
+        no_targets_json["error"]["code"],
+        "usage.update_no_targets_non_interactive"
+    );
+
+    let selection_cancelled = CliError::InteractiveUpdateSelectionCancelled;
+    assert_eq!(selection_cancelled.exit_code(), ExitCode::UsageOrConfig);
+    let selection_cancelled_json = parse_envelope(&selection_cancelled);
+    assert_eq!(
+        selection_cancelled_json["error"]["code"],
+        "usage.update_interactive_selection_cancelled"
+    );
+
+    let prompt_failed = CliError::InteractiveUpdatePromptFailed;
+    assert_eq!(prompt_failed.exit_code(), ExitCode::UsageOrConfig);
+    let prompt_failed_json = parse_envelope(&prompt_failed);
+    assert_eq!(
+        prompt_failed_json["error"]["code"],
+        "usage.update_interactive_prompt_unavailable"
+    );
+
+    let selection_empty = CliError::InteractiveUpdateSelectionEmpty;
+    assert_eq!(selection_empty.exit_code(), ExitCode::UsageOrConfig);
+    let selection_empty_json = parse_envelope(&selection_empty);
+    assert_eq!(
+        selection_empty_json["error"]["code"],
+        "usage.update_interactive_selection_empty"
+    );
+
+    let write_failed = CliError::SkillUpdateWriteFailed;
+    assert_eq!(write_failed.exit_code(), ExitCode::Filesystem);
+    let write_failed_json = parse_envelope(&write_failed);
+    assert_eq!(
+        write_failed_json["error"]["code"],
+        "filesystem.skill_update_write_failed"
+    );
+
+    let blocked = CliError::SkillUpdateBlockedManualEdit;
+    assert_eq!(blocked.exit_code(), ExitCode::Filesystem);
+    let blocked_json = parse_envelope(&blocked);
+    assert_eq!(
+        blocked_json["error"]["code"],
+        "filesystem.skill_update_blocked_manual_edit"
+    );
+
+    let rendered = serde_json::to_string(&blocked_json).unwrap();
+    assert!(!rendered.contains("/tmp/"));
+    assert!(!rendered.contains("HOME"));
+    assert!(!rendered.contains("Bearer"));
+    assert!(!rendered.contains("sk-secret"));
+}
+
+#[test]
 fn diagnostics_unknown_fallback_is_stable() {
     let err = CliError::Unknown;
 
@@ -267,10 +344,18 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::InteractiveInstallSelectionCancelled,
         CliError::InteractiveInstallPromptFailed,
         CliError::InteractiveInstallSelectionEmpty,
+        CliError::MissingUpdateConfirmation,
+        CliError::PartialUpdateTargetSelection,
+        CliError::NoUpdateTargetsInNonInteractiveMode,
+        CliError::InteractiveUpdateSelectionCancelled,
+        CliError::InteractiveUpdatePromptFailed,
+        CliError::InteractiveUpdateSelectionEmpty,
         CliError::HomeUnavailable,
         CliError::ProjectRootUnavailable,
         CliError::SkillInstallWriteFailed,
         CliError::SkillInstallBlockedManualEdit,
+        CliError::SkillUpdateWriteFailed,
+        CliError::SkillUpdateBlockedManualEdit,
         CliError::Unknown,
     ];
 

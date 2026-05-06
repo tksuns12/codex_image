@@ -61,6 +61,23 @@ enum SkillCommands {
         #[arg(long, default_value_t = false)]
         force: bool,
     },
+    /// Refresh managed codex-image SKILL.md files for selected supported tool/scope targets.
+    /// No-ops current managed files and protects manual edits unless --force is passed.
+    /// Omit flags to use interactive target selection when running in a terminal.
+    Update {
+        /// Tool slug to update for. May be repeated for deterministic multi-target updates.
+        #[arg(long, value_enum)]
+        tool: Vec<ToolArg>,
+        /// Update scope. May be repeated for deterministic multi-target updates.
+        #[arg(long, value_enum)]
+        scope: Vec<ScopeArg>,
+        /// Required confirmation for non-interactive updates that pass --tool/--scope.
+        #[arg(long)]
+        yes: bool,
+        /// Overwrite manual or tampered existing content.
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -108,6 +125,70 @@ struct SkillInstallOutput {
     scope: &'static str,
     status: &'static str,
     target_path: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SkillCommandOperation {
+    Install,
+    Update,
+}
+
+impl SkillCommandOperation {
+    const fn missing_confirmation_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::MissingInstallConfirmation,
+            Self::Update => CliError::MissingUpdateConfirmation,
+        }
+    }
+
+    const fn partial_selection_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::PartialInstallTargetSelection,
+            Self::Update => CliError::PartialUpdateTargetSelection,
+        }
+    }
+
+    const fn no_targets_non_interactive_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::NoInstallTargetsInNonInteractiveMode,
+            Self::Update => CliError::NoUpdateTargetsInNonInteractiveMode,
+        }
+    }
+
+    const fn interactive_cancelled_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::InteractiveInstallSelectionCancelled,
+            Self::Update => CliError::InteractiveUpdateSelectionCancelled,
+        }
+    }
+
+    const fn interactive_prompt_failed_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::InteractiveInstallPromptFailed,
+            Self::Update => CliError::InteractiveUpdatePromptFailed,
+        }
+    }
+
+    const fn interactive_empty_selection_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::InteractiveInstallSelectionEmpty,
+            Self::Update => CliError::InteractiveUpdateSelectionEmpty,
+        }
+    }
+
+    const fn write_failed_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::SkillInstallWriteFailed,
+            Self::Update => CliError::SkillUpdateWriteFailed,
+        }
+    }
+
+    const fn blocked_manual_edit_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::SkillInstallBlockedManualEdit,
+            Self::Update => CliError::SkillUpdateBlockedManualEdit,
+        }
+    }
 }
 
 pub async fn run() -> i32 {
@@ -160,11 +241,18 @@ fn dispatch_skill(command: SkillCommands) -> Result<(), CliError> {
             scope,
             yes,
             force,
-        } => install_skill_command(&tool, &scope, yes, force),
+        } => skill_command(SkillCommandOperation::Install, &tool, &scope, yes, force),
+        SkillCommands::Update {
+            tool,
+            scope,
+            yes,
+            force,
+        } => skill_command(SkillCommandOperation::Update, &tool, &scope, yes, force),
     }
 }
 
-fn install_skill_command(
+fn skill_command(
+    operation: SkillCommandOperation,
     tools: &[ToolArg],
     scopes: &[ScopeArg],
     yes: bool,
@@ -172,10 +260,19 @@ fn install_skill_command(
 ) -> Result<(), CliError> {
     let interactive_mode = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let selector = DialoguerTargetSelector;
-    install_skill_command_with_selector(tools, scopes, yes, force, interactive_mode, &selector)
+    skill_command_with_selector(
+        operation,
+        tools,
+        scopes,
+        yes,
+        force,
+        interactive_mode,
+        &selector,
+    )
 }
 
-fn install_skill_command_with_selector(
+fn skill_command_with_selector(
+    operation: SkillCommandOperation,
     tools: &[ToolArg],
     scopes: &[ScopeArg],
     yes: bool,
@@ -184,7 +281,8 @@ fn install_skill_command_with_selector(
     selector: &dyn InstallTargetSelector,
 ) -> Result<(), CliError> {
     let project_root = std::env::current_dir().map_err(|_| CliError::ProjectRootUnavailable)?;
-    install_skill_command_with_selector_and_project_root(
+    skill_command_with_selector_and_project_root(
+        operation,
         tools,
         scopes,
         yes,
@@ -196,7 +294,32 @@ fn install_skill_command_with_selector(
     )
 }
 
+#[cfg(test)]
 fn install_skill_command_with_selector_and_project_root(
+    tools: &[ToolArg],
+    scopes: &[ScopeArg],
+    yes: bool,
+    force: bool,
+    interactive_mode: bool,
+    selector: &dyn InstallTargetSelector,
+    project_root: &Path,
+    home_dir_override: Option<&Path>,
+) -> Result<(), CliError> {
+    skill_command_with_selector_and_project_root(
+        SkillCommandOperation::Install,
+        tools,
+        scopes,
+        yes,
+        force,
+        interactive_mode,
+        selector,
+        project_root,
+        home_dir_override,
+    )
+}
+
+fn skill_command_with_selector_and_project_root(
+    operation: SkillCommandOperation,
     tools: &[ToolArg],
     scopes: &[ScopeArg],
     yes: bool,
@@ -211,41 +334,42 @@ fn install_skill_command_with_selector_and_project_root(
 
     let selection = expand_selected_targets(&selected_tools, &selected_scopes);
     if selection.state == TargetSelectionState::PartialTargets {
-        return Err(CliError::PartialInstallTargetSelection);
+        return Err(operation.partial_selection_error());
     }
 
     let targets = match selection.state {
         TargetSelectionState::Complete => {
             if !yes {
-                return Err(CliError::MissingInstallConfirmation);
+                return Err(operation.missing_confirmation_error());
             }
             selection.targets
         }
         TargetSelectionState::NoTargets => {
             if !interactive_mode {
-                return Err(CliError::NoInstallTargetsInNonInteractiveMode);
+                return Err(operation.no_targets_non_interactive_error());
             }
 
             let home_for_options =
                 effective_home_dir(home_dir_override).ok_or(CliError::HomeUnavailable)?;
             let options = interactive_target_options(&home_for_options, project_root);
             select_interactive_targets(selector, &options).map_err(|error| match error {
-                InteractiveSelectionError::Cancelled => {
-                    CliError::InteractiveInstallSelectionCancelled
+                InteractiveSelectionError::Cancelled => operation.interactive_cancelled_error(),
+                InteractiveSelectionError::PromptFailed => {
+                    operation.interactive_prompt_failed_error()
                 }
-                InteractiveSelectionError::PromptFailed => CliError::InteractiveInstallPromptFailed,
                 InteractiveSelectionError::EmptySelection => {
-                    CliError::InteractiveInstallSelectionEmpty
+                    operation.interactive_empty_selection_error()
                 }
             })?
         }
         TargetSelectionState::PartialTargets => unreachable!("partial targets already handled"),
     };
 
-    install_selected_targets(targets, force, project_root, home_dir_override)
+    run_skill_write_loop(operation, targets, force, project_root, home_dir_override)
 }
 
-fn install_selected_targets(
+fn run_skill_write_loop(
+    operation: SkillCommandOperation,
     targets: Vec<SkillInstallTarget>,
     force: bool,
     project_root: &Path,
@@ -258,10 +382,10 @@ fn install_selected_targets(
     for target in targets {
         let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
         let result = install_skill(&plan, SkillInstallOptions { force })
-            .map_err(|_| CliError::SkillInstallWriteFailed)?;
+            .map_err(|_| operation.write_failed_error())?;
 
         if result.status == SkillInstallStatus::BlockedManualEdit {
-            return Err(CliError::SkillInstallBlockedManualEdit);
+            return Err(operation.blocked_manual_edit_error());
         }
 
         outputs.push(SkillInstallOutput {
