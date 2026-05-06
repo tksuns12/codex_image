@@ -1,5 +1,6 @@
 use codex_image::config::ConfigError;
 use codex_image::diagnostics::{CliError, ExitCode};
+use codex_image::updater::UpdateError;
 
 fn parse_envelope(err: &CliError) -> serde_json::Value {
     serde_json::to_value(err.error_envelope()).expect("error envelope serializes")
@@ -299,6 +300,71 @@ fn diagnostics_skill_update_confirmation_target_selection_and_filesystem_failure
 }
 
 #[test]
+fn diagnostics_binary_update_errors_map_to_stable_codes_without_leaks() {
+    let cases = [
+        (
+            UpdateError::UnsupportedPlatform,
+            ExitCode::UsageOrConfig,
+            "usage.update_unsupported_platform",
+        ),
+        (
+            UpdateError::ConfirmationRequired,
+            ExitCode::UsageOrConfig,
+            "usage.update_confirmation_required",
+        ),
+        (
+            UpdateError::CurrentExecutableUnavailable,
+            ExitCode::UsageOrConfig,
+            "config.update_current_executable_unavailable",
+        ),
+        (
+            UpdateError::ReleaseLookupFailed,
+            ExitCode::Api,
+            "api.update_release_lookup_failed",
+        ),
+        (
+            UpdateError::AssetDownloadFailed,
+            ExitCode::Api,
+            "api.update_asset_download_failed",
+        ),
+        (
+            UpdateError::ReleaseMetadataInvalid,
+            ExitCode::ResponseContract,
+            "response_contract.update_archive_invalid",
+        ),
+        (
+            UpdateError::MissingReleaseAsset,
+            ExitCode::ResponseContract,
+            "response_contract.update_archive_invalid",
+        ),
+        (
+            UpdateError::ArchiveInvalid,
+            ExitCode::ResponseContract,
+            "response_contract.update_archive_invalid",
+        ),
+        (
+            UpdateError::ReplacementFailed,
+            ExitCode::Filesystem,
+            "filesystem.update_replacement_failed",
+        ),
+    ];
+
+    for (source, expected_exit, expected_code) in cases {
+        let err = CliError::BinaryUpdate(source);
+        assert_eq!(err.exit_code(), expected_exit);
+
+        let json = parse_envelope(&err);
+        assert_eq!(json["error"]["code"], expected_code);
+
+        let rendered = serde_json::to_string(&json).expect("json serializes");
+        assert!(!rendered.contains("https://"));
+        assert!(!rendered.contains("/tmp/"));
+        assert!(!rendered.contains("Bearer"));
+        assert!(!rendered.contains("HOME"));
+    }
+}
+
+#[test]
 fn diagnostics_unknown_fallback_is_stable() {
     let err = CliError::Unknown;
 
@@ -362,47 +428,6 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::BinaryUpdate(UpdateError::AssetDownloadFailed),
         CliError::BinaryUpdate(UpdateError::ArchiveInvalid),
         CliError::BinaryUpdate(UpdateError::ReplacementFailed),
-        CliError::Unknown,
-    ];
-
-    for err in cases {
-        let json = parse_envelope(&err);
-        assert_error_contract_shape(&json);
-    }
-}
-[test]
-fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
-    let cases = [
-        CliError::Config(ConfigError::InvalidValue {
-            key: "CODEX_IMAGE_CODEX_BIN",
-        }),
-        CliError::OutputWriteFailed,
-        CliError::OutputVerificationFailed,
-        CliError::ImageGenerationResponseContract {
-            source_message: "generated path".to_string(),
-        },
-        CliError::CodexCliUnavailable,
-        CliError::CodexImageGenerationFailed {
-            source_message: "codex failed".to_string(),
-        },
-        CliError::MissingInstallConfirmation,
-        CliError::PartialInstallTargetSelection,
-        CliError::NoInstallTargetsInNonInteractiveMode,
-        CliError::InteractiveInstallSelectionCancelled,
-        CliError::InteractiveInstallPromptFailed,
-        CliError::InteractiveInstallSelectionEmpty,
-        CliError::MissingUpdateConfirmation,
-        CliError::PartialUpdateTargetSelection,
-        CliError::NoUpdateTargetsInNonInteractiveMode,
-        CliError::InteractiveUpdateSelectionCancelled,
-        CliError::InteractiveUpdatePromptFailed,
-        CliError::InteractiveUpdateSelectionEmpty,
-        CliError::HomeUnavailable,
-        CliError::ProjectRootUnavailable,
-        CliError::SkillInstallWriteFailed,
-        CliError::SkillInstallBlockedManualEdit,
-        CliError::SkillUpdateWriteFailed,
-        CliError::SkillUpdateBlockedManualEdit,
         CliError::Unknown,
     ];
 

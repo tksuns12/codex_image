@@ -341,6 +341,26 @@ fn dry_run_downloads_and_validates_without_replacement() {
 }
 
 #[test]
+fn dry_run_without_confirmation_is_allowed_and_still_fetches_release() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let mut update_options = options(&binary_path, true);
+    update_options.confirm = false;
+
+    let result = run_update(&source, &update_options).expect("dry-run should not require --yes");
+
+    assert_eq!(result, expected_result(&binary_path, "validated"));
+    assert_eq!(source.download_calls(), 1);
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
 fn successful_update_replaces_binary_contents() {
     let source = FakeSource::new()
         .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))

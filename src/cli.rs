@@ -205,7 +205,7 @@ impl SkillCommandOperation {
     }
 }
 
-pub async fn run() -> i32 {
+pub fn run() -> i32 {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
@@ -214,7 +214,7 @@ pub async fn run() -> i32 {
         }
     };
 
-    match dispatch(cli).await {
+    match dispatch(cli) {
         Ok(()) => 0,
         Err(err) => {
             let envelope = err.error_envelope();
@@ -227,9 +227,9 @@ pub async fn run() -> i32 {
     }
 }
 
-async fn dispatch(cli: Cli) -> Result<(), CliError> {
+fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.command {
-        Commands::Generate { prompt, out } => generate(prompt, out).await,
+        Commands::Generate { prompt, out } => generate(prompt, out),
         Commands::Update {
             yes,
             dry_run,
@@ -239,7 +239,7 @@ async fn dispatch(cli: Cli) -> Result<(), CliError> {
     }
 }
 
-async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
+fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
     let generated = generate_image_with_codex(&prompt, &out)?;
     let manifest = write_generation_output_from_files(
         &prompt,
@@ -254,6 +254,10 @@ async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
 }
 
 fn update(yes: bool, dry_run: bool, version: Option<String>) -> Result<(), CliError> {
+    if !dry_run && !yes {
+        return Err(crate::updater::UpdateError::ConfirmationRequired.into());
+    }
+
     let client = GitHubReleaseClient::new(UPDATE_REPOSITORY)?;
     let current_executable = std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
     let options = UpdateOptions {
