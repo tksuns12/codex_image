@@ -117,14 +117,106 @@ Example stdout shape:
 }
 ```
 
-## Skill path support matrix (M002/S01 contract)
+## Agent skill install/update guide
 
-S01 defines the supported `SKILL.md` path contract for downstream installer and UX slices. This slice documents and tests the matrix only; it does **not** claim that `codex-image skill install` is already implemented.
+Reader: a fresh human or AI agent landing in this repository for the first time.
+Post-read action: pick the right tool + scope, run `codex-image skill install` / `codex-image skill update` non-interactively when needed, and validate binary update behavior safely.
 
-Canonical matrix and source evidence: [docs/skill-paths.md](docs/skill-paths.md)
+Section order:
+1. Supported tools and canonical path matrix link.
+2. Interactive and deterministic install commands.
+3. Skill update behavior and tamper protection.
+4. Agent auto-install prompt.
+5. Binary update behavior and no-live verification posture.
 
-When authoring `SKILL.md` content for the supported tools, follow the OpenAI prompt guide used by this project:
+### Supported tools (install targets)
+
+Canonical source-evidence matrix: [docs/skill-paths.md](docs/skill-paths.md)
+
+| Tool | CLI `--tool` slug | Global scope path | Project scope path |
+| --- | --- | --- | --- |
+| Claude | `claude` | `~/.claude/skills/codex-image/SKILL.md` | `.claude/skills/codex-image/SKILL.md` |
+| Claude Code | `claude-code` | `~/.claude/skills/codex-image/SKILL.md` | `.claude/skills/codex-image/SKILL.md` |
+| Codex | `codex` | `~/.agents/skills/codex-image/SKILL.md` | `.agents/skills/codex-image/SKILL.md` |
+| pi | `pi` | `~/.agents/skills/codex-image/SKILL.md` | `.agents/skills/codex-image/SKILL.md` |
+| OpenCode | `opencode` | `~/.config/opencode/skills/codex-image/SKILL.md` | `.opencode/skills/codex-image/SKILL.md` |
+
+When authoring `SKILL.md` content for these tools, follow:
 - https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide
+
+### Install `codex-image` skills
+
+Interactive (TTY) flow:
+
+```bash
+codex-image skill install
+```
+
+Use `Space` to toggle tool/scope selections and `Enter` to confirm.
+
+Deterministic agent/CI commands:
+
+```bash
+codex-image skill install --tool codex --tool pi --scope project --yes
+codex-image skill install --tool claude-code --scope global --yes
+```
+
+You can also pin explicit slugs in scripts, for example `codex-image skill install --tool opencode --scope project --yes`.
+
+### Update managed skills
+
+Run:
+
+```bash
+codex-image skill update
+```
+
+Or scope updates explicitly in automation:
+
+```bash
+codex-image skill update --tool codex --scope project --yes
+```
+
+Managed update behavior:
+- Creates missing managed files.
+- Leaves already up-to-date managed files as no-op.
+- Refreshes outdated managed files to current bundled content.
+- Emits line-delimited JSON rows with stable high-level fields: `tool`, `scope`, `status`, `target_path`.
+- Blocks manual/tampered files by default.
+- Requires `--force` as the explicit overwrite escape hatch for blocked/tampered targets.
+
+### Agent auto-install prompt
+
+Copy/paste this prompt for autonomous setup:
+
+```text
+Inspect the current project and choose supported tools/scopes for codex-image skills.
+Run only non-interactive commands with explicit confirmation:
+- codex-image skill install --tool <slug> --scope <project|global> --yes
+- codex-image skill update --tool <slug> --scope <project|global> --yes
+Do not mutate authentication state, do not run login flows, and do not change credentials.
+Optionally run codex-image update --dry-run before any binary replacement.
+```
+
+### Binary update behavior
+
+`codex-image update` pulls from GitHub Release artifacts and supports dry-run, non-interactive apply, and optional version pinning:
+
+```bash
+codex-image update --dry-run
+codex-image update --yes
+codex-image update --version v1.2.3 --yes
+```
+
+High-level JSON status output is stable (release selection/result metadata plus update status fields).
+
+Windows caveat: Windows same-process replacement limitation applies; use `codex-image update --dry-run` plus manual replacement guidance instead of assuming in-process overwrite.
+
+No-live verification posture for this repository:
+- no live GitHub downloads
+- no live Codex generation
+- no credentials
+- no auth mutation
 
 ## Environment
 

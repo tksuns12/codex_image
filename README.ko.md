@@ -117,6 +117,93 @@ stdout 예시 형식:
 }
 ```
 
+## 에이전트 스킬 설치/업데이트 가이드
+
+독자: 이 저장소를 처음 보는 사람 또는 AI 에이전트.
+읽은 뒤 수행할 행동: 지원 도구/스코프를 고르고 `codex-image skill install`/`codex-image skill update`를 재현 가능한 방식으로 실행하며, 필요 시 바이너리 업데이트를 안전하게 검증합니다.
+
+### 지원 도구 매트릭스
+
+정식 경로/근거 문서: [docs/skill-paths.md](docs/skill-paths.md)
+
+| Tool | CLI `--tool` slug | Global scope path | Project scope path |
+| --- | --- | --- | --- |
+| Claude | `claude` | `~/.claude/skills/codex-image/SKILL.md` | `.claude/skills/codex-image/SKILL.md` |
+| Claude Code | `claude-code` | `~/.claude/skills/codex-image/SKILL.md` | `.claude/skills/codex-image/SKILL.md` |
+| Codex | `codex` | `~/.agents/skills/codex-image/SKILL.md` | `.agents/skills/codex-image/SKILL.md` |
+| pi | `pi` | `~/.agents/skills/codex-image/SKILL.md` | `.agents/skills/codex-image/SKILL.md` |
+| OpenCode | `opencode` | `~/.config/opencode/skills/codex-image/SKILL.md` | `.opencode/skills/codex-image/SKILL.md` |
+
+### `codex-image skill install`
+
+TTY 상호작용 설치:
+
+```bash
+codex-image skill install
+```
+
+선택 토글은 `Space`, 확정은 `Enter`를 사용합니다.
+
+에이전트/CI용 고정 명령:
+
+```bash
+codex-image skill install --tool codex --tool pi --scope project --yes
+codex-image skill install --tool claude-code --scope global --yes
+```
+
+### `codex-image skill update`
+
+기본 실행:
+
+```bash
+codex-image skill update
+```
+
+비대화식 범위 지정 예시:
+
+```bash
+codex-image skill update --tool codex --scope project --yes
+```
+
+관리 대상 업데이트 동작:
+- 누락 파일은 생성(create)
+- 최신 파일은 변경 없음(no-op)
+- 구버전 관리 파일은 갱신(refresh)
+- line-delimited JSON 행에 `tool`, `scope`, `status`, `target_path` 필드 제공
+- 수동 수정/변조 파일은 기본 차단
+- `--force`로만 명시적 덮어쓰기 허용
+
+### Agent auto-install prompt
+
+아래 프롬프트를 그대로 복사해 사용할 수 있습니다.
+
+```text
+Inspect the current project and choose supported tools/scopes for codex-image skills.
+Run only non-interactive commands with explicit confirmation:
+- codex-image skill install --tool <slug> --scope <project|global> --yes
+- codex-image skill update --tool <slug> --scope <project|global> --yes
+Do not mutate authentication state, do not run login flows, and do not change credentials.
+Optionally run codex-image update --dry-run before any binary replacement.
+```
+
+### 바이너리 업데이트
+
+`codex-image update`는 GitHub Release artifacts를 사용하며 dry-run/자동 적용/버전 고정을 지원합니다.
+
+```bash
+codex-image update --dry-run
+codex-image update --yes
+codex-image update --version v1.2.3 --yes
+```
+
+Windows same-process replacement limitation 이 있으므로, Windows에서는 `codex-image update --dry-run` 후 수동 교체 가이드를 따르세요.
+
+검증 원칙(라이브 의존성 없음):
+- GitHub 다운로드를 라이브로 수행하지 않습니다 (no live GitHub downloads)
+- Codex 생성은 라이브로 수행하지 않습니다 (no live Codex generation)
+- 자격 증명을 요구하지 않습니다 (no credentials)
+- 인증 상태를 변경하지 않습니다 (no auth mutation)
+
 ## 환경 변수
 
 - `CODEX_IMAGE_CODEX_BIN`은 선택 사항이며, Codex 실행 파일 경로를 지정합니다.

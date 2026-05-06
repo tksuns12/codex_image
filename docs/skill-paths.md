@@ -4,7 +4,7 @@
 
 This document is the canonical support matrix for where `codex-image` skill files belong for each M002-supported tool.
 
-S01 establishes and tests this path contract only. File-writing commands and installer UX are delivered in later slices.
+This matrix is consumed by `codex-image skill install` and `codex-image skill update` as the stable path/source-evidence contract.
 
 ## Canonical matrix
 
@@ -29,7 +29,7 @@ Skill name is fixed to `codex-image` and file name is fixed to `SKILL.md`.
 
 - Codex path contract is explicitly `.agents/skills`, not `~/.codex/skills`.
 - This matrix matches the hermetic resolver contract in `src/skills.rs` and `tests/skill_paths.rs`.
-- Do not infer command availability from this document alone; it is a path contract reference for downstream slices.
+- Current install/update command behavior is documented in README and must remain consistent with this matrix.
 
 ## Prompting guide requirement for skill content
 
