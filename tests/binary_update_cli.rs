@@ -15,7 +15,10 @@ fn update_cli_missing_yes_fails_before_network_with_redacted_json_envelope() {
     let output = cmd.arg("update").output().expect("update command runs");
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stdout.is_empty(), "stdout should stay empty on failure");
+    assert!(
+        output.stdout.is_empty(),
+        "stdout should stay empty on failure"
+    );
 
     let envelope = parse_json_line(output.stderr);
     assert_eq!(

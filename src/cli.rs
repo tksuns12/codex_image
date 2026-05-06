@@ -16,7 +16,7 @@ use crate::skill_installer::{
     install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
 use crate::skills::{SkillScope, SupportedTool};
-use crate::updater::{GitHubReleaseClient, UpdateOptions, UpdateResult, run_update};
+use crate::updater::{run_update, GitHubReleaseClient, UpdateOptions, UpdateResult};
 
 const GPT_IMAGE_MODEL: &str = "gpt-image-2";
 const UPDATE_REPOSITORY: &str = "tksuns12/codex_image";
@@ -259,7 +259,8 @@ fn update(yes: bool, dry_run: bool, version: Option<String>) -> Result<(), CliEr
     }
 
     let client = GitHubReleaseClient::new(UPDATE_REPOSITORY)?;
-    let current_executable = std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
+    let current_executable =
+        std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
     let options = UpdateOptions {
         current_executable,
         current_version: env!("CARGO_PKG_VERSION").to_string(),

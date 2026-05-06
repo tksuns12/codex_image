@@ -74,7 +74,10 @@ fn cli_help_update_help_documents_release_archive_flags_and_version_tag() {
         .stdout(predicate::str::contains("GitHub Release archives"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains("--dry-run"))
-        .stdout(predicate::str::contains("--version <TAG>").or(predicate::str::contains("--version <tag>")))
+        .stdout(
+            predicate::str::contains("--version <TAG>")
+                .or(predicate::str::contains("--version <tag>")),
+        )
         .stdout(predicate::str::contains("v1.2.3"));
 }
 

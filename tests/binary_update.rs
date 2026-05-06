@@ -285,7 +285,9 @@ fn update_stops_on_release_lookup_error() {
 #[test]
 fn update_stops_on_download_error() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Err(UpdateError::AssetDownloadFailed));
     let temp = tempdir().expect("tempdir");
     let binary_path = temp.path().join(current_binary_name());
@@ -301,7 +303,9 @@ fn update_stops_on_download_error() {
 #[test]
 fn update_stops_on_invalid_downloaded_archive() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(vec![1, 2, 3, 4]));
     let temp = tempdir().expect("tempdir");
     let binary_path = temp.path().join(current_binary_name());
@@ -327,7 +331,9 @@ fn update_stops_on_invalid_downloaded_archive() {
 #[test]
 fn dry_run_downloads_and_validates_without_replacement() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(download_archive_fixture()));
 
     let temp = tempdir().expect("tempdir");
@@ -343,7 +349,9 @@ fn dry_run_downloads_and_validates_without_replacement() {
 #[test]
 fn dry_run_without_confirmation_is_allowed_and_still_fetches_release() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(download_archive_fixture()));
 
     let temp = tempdir().expect("tempdir");
@@ -363,7 +371,9 @@ fn dry_run_without_confirmation_is_allowed_and_still_fetches_release() {
 #[test]
 fn successful_update_replaces_binary_contents() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(download_archive_fixture()));
 
     let temp = tempdir().expect("tempdir");
@@ -382,7 +392,9 @@ fn successful_update_replaces_binary_contents() {
 #[test]
 fn replacement_failure_restores_original_binary() {
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(download_archive_fixture()));
 
     let temp = tempdir().expect("tempdir");
@@ -405,7 +417,9 @@ fn update_preserves_existing_unix_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
     let source = FakeSource::new()
-        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
         .with_download_result(Ok(download_archive_fixture()));
 
     let temp = tempdir().expect("tempdir");
@@ -461,7 +475,11 @@ fn current_archive_root_and_binary() -> (String, String, ArchiveKind) {
         ArchiveKind::Zip => asset.strip_suffix(".zip").expect("zip suffix").to_string(),
     };
 
-    (root, platform.binary_name().to_string(), platform.archive_kind())
+    (
+        root,
+        platform.binary_name().to_string(),
+        platform.archive_kind(),
+    )
 }
 
 fn download_archive_fixture() -> Vec<u8> {
@@ -506,13 +524,19 @@ impl FakeSource {
         Self::default()
     }
 
-    fn with_release_result(self, result: Result<codex_image::updater::ReleaseMetadata, UpdateError>) -> Self {
+    fn with_release_result(
+        self,
+        result: Result<codex_image::updater::ReleaseMetadata, UpdateError>,
+    ) -> Self {
         self.release_results.lock().expect("lock").push_back(result);
         self
     }
 
     fn with_download_result(self, result: Result<Vec<u8>, UpdateError>) -> Self {
-        self.download_results.lock().expect("lock").push_back(result);
+        self.download_results
+            .lock()
+            .expect("lock")
+            .push_back(result);
         self
     }
 
@@ -522,7 +546,10 @@ impl FakeSource {
 }
 
 impl UpdateSource for FakeSource {
-    fn fetch_release(&self, requested_version: Option<&str>) -> Result<codex_image::updater::ReleaseMetadata, UpdateError> {
+    fn fetch_release(
+        &self,
+        requested_version: Option<&str>,
+    ) -> Result<codex_image::updater::ReleaseMetadata, UpdateError> {
         if let Some(version) = requested_version {
             assert_eq!(version, "v1.2.3");
         }
@@ -534,7 +561,11 @@ impl UpdateSource for FakeSource {
             .expect("expected release result")
     }
 
-    fn download_asset_to_path(&self, _download_url: &str, destination: &Path) -> Result<(), UpdateError> {
+    fn download_asset_to_path(
+        &self,
+        _download_url: &str,
+        destination: &Path,
+    ) -> Result<(), UpdateError> {
         *self.download_calls.lock().expect("lock") += 1;
         let next = self
             .download_results

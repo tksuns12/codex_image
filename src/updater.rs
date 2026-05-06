@@ -110,7 +110,10 @@ pub struct UpdateResult {
 }
 
 pub trait UpdateSource {
-    fn fetch_release(&self, requested_version: Option<&str>) -> Result<ReleaseMetadata, UpdateError>;
+    fn fetch_release(
+        &self,
+        requested_version: Option<&str>,
+    ) -> Result<ReleaseMetadata, UpdateError>;
     fn download_asset_to_path(
         &self,
         download_url: &str,
@@ -157,7 +160,8 @@ impl BinaryInstaller for FilesystemBinaryInstaller {
                 .map(|metadata| metadata.permissions().mode())
                 .unwrap_or(0o755);
             let permissions = std::fs::Permissions::from_mode(existing_mode);
-            fs::set_permissions(&candidate, permissions).map_err(|_| UpdateError::ReplacementFailed)?;
+            fs::set_permissions(&candidate, permissions)
+                .map_err(|_| UpdateError::ReplacementFailed)?;
         }
 
         fs::rename(current_executable, &backup).map_err(|_| UpdateError::ReplacementFailed)?;
@@ -217,7 +221,10 @@ impl GitHubReleaseClient {
 }
 
 impl UpdateSource for GitHubReleaseClient {
-    fn fetch_release(&self, requested_version: Option<&str>) -> Result<ReleaseMetadata, UpdateError> {
+    fn fetch_release(
+        &self,
+        requested_version: Option<&str>,
+    ) -> Result<ReleaseMetadata, UpdateError> {
         let response = self
             .client
             .get(self.release_url(requested_version))
@@ -228,7 +235,9 @@ impl UpdateSource for GitHubReleaseClient {
             return Err(UpdateError::ReleaseLookupFailed);
         }
 
-        let text = response.text().map_err(|_| UpdateError::ReleaseLookupFailed)?;
+        let text = response
+            .text()
+            .map_err(|_| UpdateError::ReleaseLookupFailed)?;
         parse_release_metadata(&text)
     }
 
@@ -360,7 +369,10 @@ pub fn resolve_artifact(
 ) -> Result<ResolvedArtifact, UpdateError> {
     let expected = release_asset_name_for_tag(&metadata.tag_name, platform);
 
-    let mut matches = metadata.assets.iter().filter(|asset| asset.name == expected);
+    let mut matches = metadata
+        .assets
+        .iter()
+        .filter(|asset| asset.name == expected);
     let first = matches.next().ok_or(UpdateError::MissingReleaseAsset)?;
 
     if matches.next().is_some() {
@@ -416,8 +428,11 @@ pub fn run_update_with_installer<S: UpdateSource, I: BinaryInstaller>(
         return Ok(update_result(options, &artifact, "validated"));
     }
 
-    let extracted_binary =
-        extract_binary_bytes(&archive_bytes, artifact.archive_kind, &validated.binary_path)?;
+    let extracted_binary = extract_binary_bytes(
+        &archive_bytes,
+        artifact.archive_kind,
+        &validated.binary_path,
+    )?;
 
     installer.replace_binary(&options.current_executable, &extracted_binary)?;
 
@@ -432,7 +447,11 @@ fn expected_archive_root(artifact: &ResolvedArtifact) -> Result<String, UpdateEr
     Ok(stem.to_string())
 }
 
-fn update_result(options: &UpdateOptions, artifact: &ResolvedArtifact, status: &str) -> UpdateResult {
+fn update_result(
+    options: &UpdateOptions,
+    artifact: &ResolvedArtifact,
+    status: &str,
+) -> UpdateResult {
     UpdateResult {
         status: status.to_string(),
         current_version: options.current_version.clone(),
@@ -565,7 +584,9 @@ fn validate_zip_archive(
     let mut state = ValidationState::new(archive_kind, expected_binary_name);
 
     for idx in 0..archive.len() {
-        let file = archive.by_index(idx).map_err(|_| UpdateError::ArchiveInvalid)?;
+        let file = archive
+            .by_index(idx)
+            .map_err(|_| UpdateError::ArchiveInvalid)?;
         if file.is_dir() {
             continue;
         }
