@@ -7,7 +7,11 @@ use serde::Serialize;
 use crate::codex::generate_image_with_codex;
 use crate::diagnostics::CliError;
 use crate::output::write_generation_output_from_files;
-use crate::skill_install_ux::{expand_selected_targets, TargetSelectionState};
+use crate::skill_install_ux::{
+    expand_selected_targets, interactive_target_options, select_interactive_targets,
+    DialoguerTargetSelector, InstallTargetSelector, InteractiveSelectionError, SkillInstallTarget,
+    TargetSelectionState,
+};
 use crate::skill_installer::{
     install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
@@ -166,33 +170,93 @@ fn install_skill_command(
     yes: bool,
     force: bool,
 ) -> Result<(), CliError> {
+    let interactive_mode = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let selector = DialoguerTargetSelector;
+    install_skill_command_with_selector(tools, scopes, yes, force, interactive_mode, &selector)
+}
+
+fn install_skill_command_with_selector(
+    tools: &[ToolArg],
+    scopes: &[ScopeArg],
+    yes: bool,
+    force: bool,
+    interactive_mode: bool,
+    selector: &dyn InstallTargetSelector,
+) -> Result<(), CliError> {
+    let project_root = std::env::current_dir().map_err(|_| CliError::ProjectRootUnavailable)?;
+    install_skill_command_with_selector_and_project_root(
+        tools,
+        scopes,
+        yes,
+        force,
+        interactive_mode,
+        selector,
+        &project_root,
+        None,
+    )
+}
+
+fn install_skill_command_with_selector_and_project_root(
+    tools: &[ToolArg],
+    scopes: &[ScopeArg],
+    yes: bool,
+    force: bool,
+    interactive_mode: bool,
+    selector: &dyn InstallTargetSelector,
+    project_root: &Path,
+    home_dir_override: Option<&Path>,
+) -> Result<(), CliError> {
     let selected_tools: Vec<SupportedTool> = tools.iter().copied().map(Into::into).collect();
     let selected_scopes: Vec<SkillScope> = scopes.iter().copied().map(Into::into).collect();
 
     let selection = expand_selected_targets(&selected_tools, &selected_scopes);
-    match selection.state {
-        TargetSelectionState::PartialTargets => {
-            return Err(CliError::PartialInstallTargetSelection);
+    if selection.state == TargetSelectionState::PartialTargets {
+        return Err(CliError::PartialInstallTargetSelection);
+    }
+
+    let targets = match selection.state {
+        TargetSelectionState::Complete => {
+            if !yes {
+                return Err(CliError::MissingInstallConfirmation);
+            }
+            selection.targets
         }
         TargetSelectionState::NoTargets => {
-            if !std::io::stdin().is_terminal() {
+            if !interactive_mode {
                 return Err(CliError::NoInstallTargetsInNonInteractiveMode);
             }
-            return Err(CliError::NoInstallTargetsInNonInteractiveMode);
+
+            let home_for_options =
+                effective_home_dir(home_dir_override).ok_or(CliError::HomeUnavailable)?;
+            let options = interactive_target_options(&home_for_options, project_root);
+            select_interactive_targets(selector, &options).map_err(|error| match error {
+                InteractiveSelectionError::Cancelled => {
+                    CliError::InteractiveInstallSelectionCancelled
+                }
+                InteractiveSelectionError::PromptFailed => CliError::InteractiveInstallPromptFailed,
+                InteractiveSelectionError::EmptySelection => {
+                    CliError::InteractiveInstallSelectionEmpty
+                }
+            })?
         }
-        TargetSelectionState::Complete => {}
-    }
+        TargetSelectionState::PartialTargets => unreachable!("partial targets already handled"),
+    };
 
-    if !yes {
-        return Err(CliError::MissingInstallConfirmation);
-    }
+    install_selected_targets(targets, force, project_root, home_dir_override)
+}
 
-    let project_root = std::env::current_dir().map_err(|_| CliError::ProjectRootUnavailable)?;
-    let home_dir = resolve_home_dir(&selection.selected_scopes, &project_root)?;
+fn install_selected_targets(
+    targets: Vec<SkillInstallTarget>,
+    force: bool,
+    project_root: &Path,
+    home_dir_override: Option<&Path>,
+) -> Result<(), CliError> {
+    let selected_scopes: Vec<SkillScope> = targets.iter().map(|target| target.scope).collect();
+    let home_dir = resolve_home_dir(&selected_scopes, project_root, home_dir_override)?;
 
-    let mut outputs = Vec::with_capacity(selection.targets.len());
-    for target in selection.targets {
-        let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, &project_root);
+    let mut outputs = Vec::with_capacity(targets.len());
+    for target in targets {
+        let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
         let result = install_skill(&plan, SkillInstallOptions { force })
             .map_err(|_| CliError::SkillInstallWriteFailed)?;
 
@@ -216,12 +280,22 @@ fn install_skill_command(
     Ok(())
 }
 
-fn resolve_home_dir(scopes: &[SkillScope], project_root: &Path) -> Result<PathBuf, CliError> {
+fn resolve_home_dir(
+    scopes: &[SkillScope],
+    project_root: &Path,
+    home_dir_override: Option<&Path>,
+) -> Result<PathBuf, CliError> {
     if scopes.contains(&SkillScope::Global) {
-        return read_home_dir().ok_or(CliError::HomeUnavailable);
+        return effective_home_dir(home_dir_override).ok_or(CliError::HomeUnavailable);
     }
 
-    Ok(read_home_dir().unwrap_or_else(|| project_root.to_path_buf()))
+    Ok(effective_home_dir(home_dir_override).unwrap_or_else(|| project_root.to_path_buf()))
+}
+
+fn effective_home_dir(home_dir_override: Option<&Path>) -> Option<PathBuf> {
+    home_dir_override
+        .map(|path| path.to_path_buf())
+        .or_else(read_home_dir)
 }
 
 fn read_home_dir() -> Option<PathBuf> {
@@ -236,4 +310,243 @@ fn read_home_dir() -> Option<PathBuf> {
     }
 
     Some(PathBuf::from(raw))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use super::{install_skill_command_with_selector_and_project_root, ScopeArg, ToolArg};
+    use crate::diagnostics::CliError;
+    use crate::skill_install_ux::{
+        InstallTargetSelector, InteractiveSelectionError, InteractiveTargetOption,
+        SkillInstallTarget,
+    };
+    use crate::skills::{SkillScope, SupportedTool};
+
+    struct FakeSelector {
+        result: Result<Vec<SkillInstallTarget>, InteractiveSelectionError>,
+        calls: RefCell<usize>,
+    }
+
+    impl FakeSelector {
+        fn from_result(result: Result<Vec<SkillInstallTarget>, InteractiveSelectionError>) -> Self {
+            Self {
+                result,
+                calls: RefCell::new(0),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            *self.calls.borrow()
+        }
+    }
+
+    impl InstallTargetSelector for FakeSelector {
+        fn select(
+            &self,
+            _options: &[InteractiveTargetOption],
+        ) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError> {
+            *self.calls.borrow_mut() += 1;
+            self.result.clone()
+        }
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_no_flags_installs_multiple_targets_without_yes() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let selector = FakeSelector::from_result(Ok(vec![
+            SkillInstallTarget::new(SupportedTool::Pi, SkillScope::Global),
+            SkillInstallTarget::new(SupportedTool::Pi, SkillScope::ProjectLocal),
+        ]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(selector.call_count(), 1);
+
+        assert!(home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
+            .is_file());
+
+        assert!(project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
+            .is_file());
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_no_flags_empty_selection_fails_without_writes() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let selector = FakeSelector::from_result(Err(InteractiveSelectionError::EmptySelection));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(matches!(
+            result,
+            Err(CliError::InteractiveInstallSelectionEmpty)
+        ));
+        assert_eq!(selector.call_count(), 1);
+
+        assert!(!home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
+            .exists());
+
+        assert!(!project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
+            .exists());
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_no_flags_cancel_fails_without_writes() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let selector = FakeSelector::from_result(Err(InteractiveSelectionError::Cancelled));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(matches!(
+            result,
+            Err(CliError::InteractiveInstallSelectionCancelled)
+        ));
+        assert_eq!(selector.call_count(), 1);
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_selection_respects_manual_edit_block() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let target = project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(target.parent().expect("target parent"))
+            .expect("create target parent");
+        let manual_content = "# custom skill\nmanual-secret\n";
+        std::fs::write(&target, manual_content).expect("seed manual content");
+
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Pi,
+            SkillScope::ProjectLocal,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(matches!(
+            result,
+            Err(CliError::SkillInstallBlockedManualEdit)
+        ));
+        assert_eq!(selector.call_count(), 1);
+
+        let preserved = std::fs::read_to_string(target).expect("manual file should stay intact");
+        assert_eq!(preserved, manual_content);
+    }
+
+    #[test]
+    fn skill_install_cli_no_flags_non_tty_fails_fast_without_prompt() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Pi,
+            SkillScope::ProjectLocal,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            false,
+            &selector,
+            project.path(),
+            None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(CliError::NoInstallTargetsInNonInteractiveMode)
+        ));
+        assert_eq!(selector.call_count(), 0);
+    }
+
+    #[test]
+    fn skill_install_cli_flagged_installs_still_require_yes_and_skip_selector() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Pi,
+            SkillScope::ProjectLocal,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[ToolArg::Pi],
+            &[ScopeArg::Project],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            None,
+        );
+
+        assert!(matches!(result, Err(CliError::MissingInstallConfirmation)));
+        assert_eq!(selector.call_count(), 0);
+    }
 }

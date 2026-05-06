@@ -56,6 +56,12 @@ pub enum CliError {
     PartialInstallTargetSelection,
     #[error("no install targets selected in non-interactive mode")]
     NoInstallTargetsInNonInteractiveMode,
+    #[error("interactive install target selection was cancelled")]
+    InteractiveInstallSelectionCancelled,
+    #[error("interactive install prompt failed")]
+    InteractiveInstallPromptFailed,
+    #[error("interactive install target selection was empty")]
+    InteractiveInstallSelectionEmpty,
     #[error("HOME is unavailable")]
     HomeUnavailable,
     #[error("current working directory is unavailable")]
@@ -145,6 +151,27 @@ impl CliError {
                 message: "no non-interactive install targets were selected",
                 recoverable: true,
                 hint: "Provide --tool and --scope flags with --yes, or run in an interactive terminal.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveInstallSelectionCancelled => ErrorClassification {
+                code: "usage.install_interactive_selection_cancelled",
+                message: "interactive install selection was cancelled",
+                recoverable: true,
+                hint: "Re-run and confirm at least one target with Enter.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveInstallPromptFailed => ErrorClassification {
+                code: "usage.install_interactive_prompt_unavailable",
+                message: "interactive install prompt is unavailable",
+                recoverable: true,
+                hint: "Use --tool/--scope with --yes when running non-interactively.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::InteractiveInstallSelectionEmpty => ErrorClassification {
+                code: "usage.install_interactive_selection_empty",
+                message: "interactive install selection was empty",
+                recoverable: true,
+                hint: "Select at least one target with Space before pressing Enter.",
                 exit_code: ExitCode::UsageOrConfig,
             },
             Self::HomeUnavailable => ErrorClassification {

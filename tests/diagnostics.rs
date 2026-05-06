@@ -167,10 +167,37 @@ fn diagnostics_skill_install_confirmation_target_selection_home_and_write_failur
         "usage.install_no_targets_non_interactive"
     );
 
+    let selection_cancelled = CliError::InteractiveInstallSelectionCancelled;
+    assert_eq!(selection_cancelled.exit_code(), ExitCode::UsageOrConfig);
+    let selection_cancelled_json = parse_envelope(&selection_cancelled);
+    assert_eq!(
+        selection_cancelled_json["error"]["code"],
+        "usage.install_interactive_selection_cancelled"
+    );
+
+    let prompt_failed = CliError::InteractiveInstallPromptFailed;
+    assert_eq!(prompt_failed.exit_code(), ExitCode::UsageOrConfig);
+    let prompt_failed_json = parse_envelope(&prompt_failed);
+    assert_eq!(
+        prompt_failed_json["error"]["code"],
+        "usage.install_interactive_prompt_unavailable"
+    );
+
+    let selection_empty = CliError::InteractiveInstallSelectionEmpty;
+    assert_eq!(selection_empty.exit_code(), ExitCode::UsageOrConfig);
+    let selection_empty_json = parse_envelope(&selection_empty);
+    assert_eq!(
+        selection_empty_json["error"]["code"],
+        "usage.install_interactive_selection_empty"
+    );
+
     let home_missing = CliError::HomeUnavailable;
     assert_eq!(home_missing.exit_code(), ExitCode::UsageOrConfig);
     let home_missing_json = parse_envelope(&home_missing);
-    assert_eq!(home_missing_json["error"]["code"], "config.home_unavailable");
+    assert_eq!(
+        home_missing_json["error"]["code"],
+        "config.home_unavailable"
+    );
 
     let write_failed = CliError::SkillInstallWriteFailed;
     assert_eq!(write_failed.exit_code(), ExitCode::Filesystem);
@@ -237,6 +264,9 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::MissingInstallConfirmation,
         CliError::PartialInstallTargetSelection,
         CliError::NoInstallTargetsInNonInteractiveMode,
+        CliError::InteractiveInstallSelectionCancelled,
+        CliError::InteractiveInstallPromptFailed,
+        CliError::InteractiveInstallSelectionEmpty,
         CliError::HomeUnavailable,
         CliError::ProjectRootUnavailable,
         CliError::SkillInstallWriteFailed,

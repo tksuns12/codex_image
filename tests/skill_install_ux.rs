@@ -1,7 +1,39 @@
+use std::cell::RefCell;
+
 use codex_image::skill_install_ux::{
-    all_selectable_targets, expand_selected_targets, SkillInstallTarget, TargetSelectionState,
+    all_selectable_targets, expand_selected_targets, interactive_target_options,
+    select_interactive_targets, InstallTargetSelector, InteractiveSelectionError,
+    InteractiveTargetOption, SkillInstallTarget, TargetSelectionState,
 };
 use codex_image::skills::{SkillScope, SupportedTool};
+
+struct FakeSelector {
+    result: Result<Vec<SkillInstallTarget>, InteractiveSelectionError>,
+    calls: RefCell<usize>,
+}
+
+impl FakeSelector {
+    fn from_result(result: Result<Vec<SkillInstallTarget>, InteractiveSelectionError>) -> Self {
+        Self {
+            result,
+            calls: RefCell::new(0),
+        }
+    }
+
+    fn call_count(&self) -> usize {
+        *self.calls.borrow()
+    }
+}
+
+impl InstallTargetSelector for FakeSelector {
+    fn select(
+        &self,
+        _options: &[InteractiveTargetOption],
+    ) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError> {
+        *self.calls.borrow_mut() += 1;
+        self.result.clone()
+    }
+}
 
 #[test]
 fn skill_install_ux_all_selectable_targets_cover_full_matrix_in_canonical_order() {
@@ -93,4 +125,94 @@ fn skill_install_ux_expansion_reports_no_target_and_partial_target_metadata() {
     assert!(!missing_scopes.missing_tools);
     assert!(missing_scopes.missing_scopes);
     assert!(missing_scopes.targets.is_empty());
+}
+
+#[test]
+fn skill_install_ux_interactive_options_include_tool_scope_and_target_path_labels() {
+    let project = tempfile::tempdir().expect("project tempdir");
+    let home = tempfile::tempdir().expect("home tempdir");
+
+    let options = interactive_target_options(home.path(), project.path());
+    assert_eq!(options.len(), 10);
+
+    let first = &options[0];
+    assert_eq!(first.target.tool, SupportedTool::Claude);
+    assert_eq!(first.target.scope, SkillScope::Global);
+    assert!(first.label.contains("Claude"));
+    assert!(first.label.contains("(claude)"));
+    assert!(first.label.contains("[global]"));
+    assert!(
+        first.label.contains(home.path().to_string_lossy().as_ref()),
+        "label should include resolved global target path"
+    );
+
+    let project_local_pi = options
+        .iter()
+        .find(|option| {
+            option.target.tool == SupportedTool::Pi
+                && option.target.scope == SkillScope::ProjectLocal
+        })
+        .expect("pi/project option exists");
+    assert!(project_local_pi.label.contains("pi"));
+    assert!(project_local_pi.label.contains("[project]"));
+    assert!(
+        project_local_pi
+            .label
+            .contains(project.path().to_string_lossy().as_ref()),
+        "label should include resolved project-local target path"
+    );
+}
+
+#[test]
+fn skill_install_ux_prompt_boundary_allows_multiple_targets_via_fake_selector() {
+    let selector = FakeSelector::from_result(Ok(vec![
+        SkillInstallTarget::new(SupportedTool::Pi, SkillScope::Global),
+        SkillInstallTarget::new(SupportedTool::OpenCode, SkillScope::ProjectLocal),
+    ]));
+
+    let options = vec![
+        InteractiveTargetOption {
+            target: SkillInstallTarget::new(SupportedTool::Pi, SkillScope::Global),
+            label: "pi global".to_string(),
+        },
+        InteractiveTargetOption {
+            target: SkillInstallTarget::new(SupportedTool::OpenCode, SkillScope::ProjectLocal),
+            label: "opencode project".to_string(),
+        },
+    ];
+
+    let selected = select_interactive_targets(&selector, &options).expect("selection should pass");
+
+    assert_eq!(selector.call_count(), 1);
+    assert_eq!(
+        selected,
+        vec![
+            SkillInstallTarget::new(SupportedTool::Pi, SkillScope::Global),
+            SkillInstallTarget::new(SupportedTool::OpenCode, SkillScope::ProjectLocal),
+        ]
+    );
+}
+
+#[test]
+fn skill_install_ux_prompt_boundary_surfaces_empty_and_cancel_errors() {
+    let options = vec![InteractiveTargetOption {
+        target: SkillInstallTarget::new(SupportedTool::Pi, SkillScope::ProjectLocal),
+        label: "pi project".to_string(),
+    }];
+
+    let empty_selector = FakeSelector::from_result(Err(InteractiveSelectionError::EmptySelection));
+    let empty_result = select_interactive_targets(&empty_selector, &options);
+    assert!(matches!(
+        empty_result,
+        Err(InteractiveSelectionError::EmptySelection)
+    ));
+    assert_eq!(empty_selector.call_count(), 1);
+
+    let cancel_selector = FakeSelector::from_result(Err(InteractiveSelectionError::Cancelled));
+    let cancel_result = select_interactive_targets(&cancel_selector, &options);
+    assert!(matches!(
+        cancel_result,
+        Err(InteractiveSelectionError::Cancelled)
+    ));
+    assert_eq!(cancel_selector.call_count(), 1);
 }

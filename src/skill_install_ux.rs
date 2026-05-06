@@ -1,4 +1,8 @@
-use crate::skills::{SkillScope, SupportedTool};
+use std::path::Path;
+
+use dialoguer::{theme::ColorfulTheme, MultiSelect};
+
+use crate::skills::{resolve_skill_path, SkillScope, SupportedTool};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SkillInstallTarget {
@@ -29,6 +33,61 @@ pub struct TargetSelection {
     pub missing_scopes: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InteractiveTargetOption {
+    pub target: SkillInstallTarget,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractiveSelectionError {
+    Cancelled,
+    PromptFailed,
+    EmptySelection,
+}
+
+pub trait InstallTargetSelector {
+    fn select(
+        &self,
+        options: &[InteractiveTargetOption],
+    ) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError>;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DialoguerTargetSelector;
+
+impl InstallTargetSelector for DialoguerTargetSelector {
+    fn select(
+        &self,
+        options: &[InteractiveTargetOption],
+    ) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError> {
+        let labels: Vec<&str> = options.iter().map(|option| option.label.as_str()).collect();
+        let selected = MultiSelect::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select install targets (Space to toggle, Enter to confirm)")
+            .items(&labels)
+            .interact_opt()
+            .map_err(|_| InteractiveSelectionError::PromptFailed)?;
+
+        let Some(selected) = selected else {
+            return Err(InteractiveSelectionError::Cancelled);
+        };
+
+        if selected.is_empty() {
+            return Err(InteractiveSelectionError::EmptySelection);
+        }
+
+        selected
+            .into_iter()
+            .map(|index| {
+                options
+                    .get(index)
+                    .map(|option| option.target)
+                    .ok_or(InteractiveSelectionError::PromptFailed)
+            })
+            .collect()
+    }
+}
+
 pub fn all_selectable_targets() -> Vec<SkillInstallTarget> {
     let mut targets = Vec::new();
     for tool in SupportedTool::all() {
@@ -38,6 +97,32 @@ pub fn all_selectable_targets() -> Vec<SkillInstallTarget> {
     }
 
     targets
+}
+
+pub fn interactive_target_options(
+    home_dir: &Path,
+    project_root: &Path,
+) -> Vec<InteractiveTargetOption> {
+    all_selectable_targets()
+        .into_iter()
+        .map(|target| InteractiveTargetOption {
+            label: format!(
+                "{} ({}) [{}] -> {}",
+                target.tool.display_name(),
+                target.tool.slug(),
+                target.scope.slug(),
+                resolve_skill_path(target.tool, target.scope, home_dir, project_root).display(),
+            ),
+            target,
+        })
+        .collect()
+}
+
+pub fn select_interactive_targets(
+    selector: &dyn InstallTargetSelector,
+    options: &[InteractiveTargetOption],
+) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError> {
+    selector.select(options)
 }
 
 pub fn expand_selected_targets(
