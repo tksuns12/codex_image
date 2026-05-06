@@ -187,7 +187,11 @@ fn skill_install_cli_multi_target_repeated_flags_emit_deterministic_json_lines()
     assert!(output.stderr.is_empty());
 
     let lines = parse_json_lines(output.stdout);
-    assert_eq!(lines.len(), 2, "deduped tool/scope should produce 2 targets");
+    assert_eq!(
+        lines.len(),
+        2,
+        "deduped tool/scope should produce 2 targets"
+    );
 
     assert_eq!(lines[0]["tool"], "pi");
     assert_eq!(lines[0]["scope"], "global");

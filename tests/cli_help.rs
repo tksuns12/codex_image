@@ -25,8 +25,13 @@ fn cli_help_skill_install_help_documents_non_interactive_and_interactive_modes()
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("--tool <TOOL>").or(predicate::str::contains("--tool <tool>")))
-        .stdout(predicate::str::contains("--scope <SCOPE>").or(predicate::str::contains("--scope <scope>")))
+        .stdout(
+            predicate::str::contains("--tool <TOOL>").or(predicate::str::contains("--tool <tool>")),
+        )
+        .stdout(
+            predicate::str::contains("--scope <SCOPE>")
+                .or(predicate::str::contains("--scope <scope>")),
+        )
         .stdout(predicate::str::contains("May be repeated"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains("non-interactive"))
