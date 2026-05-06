@@ -84,6 +84,16 @@ fn release_workflow_builds_expected_platform_artifacts() {
         workflow.contains("--clobber"),
         "release workflow reruns should replace existing failed-run artifacts"
     );
+    assert!(
+        !workflow.contains("Compress-Archive -Path \"$packageDir/*\""),
+        "windows archive packaging must not flatten the package root via $packageDir/*"
+    );
+    assert!(
+        workflow.contains("Push-Location dist")
+            && workflow.contains("Compress-Archive -Path $asset -DestinationPath \"$asset.zip\"")
+            && workflow.contains("Pop-Location"),
+        "windows archive packaging must preserve the top-level $asset directory in the zip"
+    );
 }
 
 #[test]
@@ -103,8 +113,9 @@ fn release_workflow_targets_have_updater_mapping_and_naming_contract() {
     );
 
     for target in workflow_targets {
-        let platform = workflow_target_to_platform(target)
-            .unwrap_or_else(|reason| panic!("workflow target {target} has no updater mapping: {reason}"));
+        let platform = workflow_target_to_platform(target).unwrap_or_else(|reason| {
+            panic!("workflow target {target} has no updater mapping: {reason}")
+        });
 
         assert_eq!(
             platform.rust_target(),
