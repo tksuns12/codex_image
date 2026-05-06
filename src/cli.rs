@@ -16,7 +16,10 @@ use crate::skill_installer::{
     install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
 use crate::skills::{SkillScope, SupportedTool};
-use crate::updater::{run_update, GitHubReleaseClient, UpdateOptions, UpdateResult};
+use crate::updater::{
+    run_update_with_installer, BinaryInstaller, FilesystemBinaryInstaller, GitHubReleaseClient,
+    UpdateOptions, UpdateResult, UpdateSource,
+};
 
 const GPT_IMAGE_MODEL: &str = "gpt-image-2";
 const UPDATE_REPOSITORY: &str = "tksuns12/codex_image";
@@ -254,23 +257,46 @@ fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
 }
 
 fn update(yes: bool, dry_run: bool, version: Option<String>) -> Result<(), CliError> {
+    let client = GitHubReleaseClient::new(UPDATE_REPOSITORY)?;
+    let installer = FilesystemBinaryInstaller;
+    let current_executable =
+        std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
+
+    let result = execute_update_command(
+        &client,
+        &installer,
+        current_executable,
+        env!("CARGO_PKG_VERSION").to_string(),
+        yes,
+        dry_run,
+        version,
+    )?;
+
+    print_update_result(&result)
+}
+
+pub fn execute_update_command<S: UpdateSource, I: BinaryInstaller>(
+    source: &S,
+    installer: &I,
+    current_executable: PathBuf,
+    current_version: String,
+    yes: bool,
+    dry_run: bool,
+    version: Option<String>,
+) -> Result<UpdateResult, CliError> {
     if !dry_run && !yes {
         return Err(crate::updater::UpdateError::ConfirmationRequired.into());
     }
 
-    let client = GitHubReleaseClient::new(UPDATE_REPOSITORY)?;
-    let current_executable =
-        std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
     let options = UpdateOptions {
         current_executable,
-        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        current_version,
         requested_version: version,
         dry_run,
         confirm: yes,
     };
 
-    let result = run_update(&client, &options)?;
-    print_update_result(&result)
+    run_update_with_installer(source, &options, installer).map_err(Into::into)
 }
 
 fn print_update_result(result: &UpdateResult) -> Result<(), CliError> {
