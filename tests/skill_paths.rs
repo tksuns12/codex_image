@@ -90,7 +90,10 @@ fn skill_path_contracts_resolves_every_supported_tool_scope_pair() {
     ];
 
     for (tool, scope, expected) in matrix {
-        assert_eq!(resolve_skill_path(tool, scope, home, project), Path::new(expected));
+        assert_eq!(
+            resolve_skill_path(tool, scope, home, project),
+            Path::new(expected)
+        );
     }
 }
 
