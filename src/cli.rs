@@ -1,10 +1,15 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+use serde::Serialize;
 
 use crate::codex::generate_image_with_codex;
 use crate::diagnostics::CliError;
 use crate::output::write_generation_output_from_files;
+use crate::skill_installer::{
+    install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
+};
+use crate::skills::{SkillScope, SupportedTool};
 
 const GPT_IMAGE_MODEL: &str = "gpt-image-2";
 
@@ -25,6 +30,77 @@ enum Commands {
         #[arg(long, value_name = "DIR")]
         out: PathBuf,
     },
+    /// Manage codex-image native skill installation paths.
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillCommands {
+    /// Install the codex-image SKILL.md file for a supported tool and scope.
+    Install {
+        /// Tool slug to install for.
+        #[arg(long, value_enum)]
+        tool: ToolArg,
+        /// Installation scope.
+        #[arg(long, value_enum)]
+        scope: ScopeArg,
+        /// Required non-interactive confirmation flag.
+        #[arg(long)]
+        yes: bool,
+        /// Overwrite manual or tampered existing content.
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum ToolArg {
+    Claude,
+    #[value(name = "claude-code")]
+    ClaudeCode,
+    Codex,
+    Pi,
+    #[value(name = "opencode")]
+    OpenCode,
+}
+
+impl From<ToolArg> for SupportedTool {
+    fn from(value: ToolArg) -> Self {
+        match value {
+            ToolArg::Claude => SupportedTool::Claude,
+            ToolArg::ClaudeCode => SupportedTool::ClaudeCode,
+            ToolArg::Codex => SupportedTool::Codex,
+            ToolArg::Pi => SupportedTool::Pi,
+            ToolArg::OpenCode => SupportedTool::OpenCode,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum ScopeArg {
+    Global,
+    #[value(name = "project")]
+    Project,
+}
+
+impl From<ScopeArg> for SkillScope {
+    fn from(value: ScopeArg) -> Self {
+        match value {
+            ScopeArg::Global => SkillScope::Global,
+            ScopeArg::Project => SkillScope::ProjectLocal,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct SkillInstallOutput {
+    tool: &'static str,
+    scope: &'static str,
+    status: &'static str,
+    target_path: String,
 }
 
 pub async fn run() -> i32 {
@@ -52,6 +128,7 @@ pub async fn run() -> i32 {
 async fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.command {
         Commands::Generate { prompt, out } => generate(prompt, out).await,
+        Commands::Skill { command } => dispatch_skill(command),
     }
 }
 
@@ -67,4 +144,71 @@ async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
     println!("{line}");
 
     Ok(())
+}
+
+fn dispatch_skill(command: SkillCommands) -> Result<(), CliError> {
+    match command {
+        SkillCommands::Install {
+            tool,
+            scope,
+            yes,
+            force,
+        } => install_skill_command(tool.into(), scope.into(), yes, force),
+    }
+}
+
+fn install_skill_command(
+    tool: SupportedTool,
+    scope: SkillScope,
+    yes: bool,
+    force: bool,
+) -> Result<(), CliError> {
+    if !yes {
+        return Err(CliError::MissingInstallConfirmation);
+    }
+
+    let project_root = std::env::current_dir().map_err(|_| CliError::ProjectRootUnavailable)?;
+    let home_dir = resolve_home_dir(scope, &project_root)?;
+    let plan = SkillInstallPlan::build(tool, scope, &home_dir, &project_root);
+
+    let result = install_skill(&plan, SkillInstallOptions { force })
+        .map_err(|_| CliError::SkillInstallWriteFailed)?;
+
+    if result.status == SkillInstallStatus::BlockedManualEdit {
+        return Err(CliError::SkillInstallBlockedManualEdit);
+    }
+
+    let output = SkillInstallOutput {
+        tool: tool.slug(),
+        scope: scope.slug(),
+        status: result.status.slug(),
+        target_path: result.path.display().to_string(),
+    };
+
+    let line = serde_json::to_string(&output).map_err(|_| CliError::Unknown)?;
+    println!("{line}");
+
+    Ok(())
+}
+
+fn resolve_home_dir(scope: SkillScope, project_root: &Path) -> Result<PathBuf, CliError> {
+    if scope == SkillScope::Global {
+        return read_home_dir().ok_or(CliError::HomeUnavailable);
+    }
+
+    Ok(read_home_dir().unwrap_or_else(|| project_root.to_path_buf()))
+}
+
+fn read_home_dir() -> Option<PathBuf> {
+    let raw = std::env::var_os("HOME")?;
+    if raw.is_empty() {
+        return None;
+    }
+
+    let as_text = raw.to_string_lossy();
+    if as_text.trim().is_empty() {
+        return None;
+    }
+
+    Some(PathBuf::from(raw))
 }

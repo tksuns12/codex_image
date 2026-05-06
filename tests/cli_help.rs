@@ -19,6 +19,21 @@ fn cli_help_generate_help_documents_required_out_and_prompt_contract() {
 }
 
 #[test]
+fn cli_help_skill_install_help_documents_non_interactive_flags() {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("skill").arg("install").arg("--help");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--tool"))
+        .stdout(predicate::str::contains("--scope"))
+        .stdout(predicate::str::contains("--yes"))
+        .stdout(predicate::str::contains("--force"))
+        .stdout(predicate::str::contains("claude-code"))
+        .stdout(predicate::str::contains("opencode"));
+}
+
+#[test]
 fn cli_help_removed_auth_lifecycle_commands() {
     for command in ["login", "status", "logout"] {
         let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");

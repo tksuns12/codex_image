@@ -98,6 +98,18 @@ pub enum SkillInstallStatus {
     ForcedOverwrite,
 }
 
+impl SkillInstallStatus {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Unchanged => "unchanged",
+            Self::Updated => "updated",
+            Self::BlockedManualEdit => "blocked_manual_edit",
+            Self::ForcedOverwrite => "forced_overwrite",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillInstallResult {
     pub status: SkillInstallStatus,

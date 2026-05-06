@@ -50,6 +50,16 @@ pub enum CliError {
     CodexCliUnavailable,
     #[error("Codex image generation failed")]
     CodexImageGenerationFailed { source_message: String },
+    #[error("missing required skill install confirmation")]
+    MissingInstallConfirmation,
+    #[error("HOME is unavailable")]
+    HomeUnavailable,
+    #[error("current working directory is unavailable")]
+    ProjectRootUnavailable,
+    #[error("skill install write failed")]
+    SkillInstallWriteFailed,
+    #[error("skill install blocked by existing manual edit")]
+    SkillInstallBlockedManualEdit,
     #[error("unexpected failure")]
     Unknown,
 }
@@ -111,6 +121,41 @@ impl CliError {
                 recoverable: true,
                 hint: "Retry generation in a moment, or verify Codex is installed and logged in.",
                 exit_code: ExitCode::Api,
+            },
+            Self::MissingInstallConfirmation => ErrorClassification {
+                code: "usage.install_confirmation_required",
+                message: "skill install requires explicit confirmation",
+                recoverable: true,
+                hint: "Re-run with --yes to confirm non-interactive installation.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::HomeUnavailable => ErrorClassification {
+                code: "config.home_unavailable",
+                message: "HOME is unavailable for global skill installation",
+                recoverable: true,
+                hint: "Set HOME to a writable directory and retry.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::ProjectRootUnavailable => ErrorClassification {
+                code: "config.project_root_unavailable",
+                message: "current directory is unavailable",
+                recoverable: true,
+                hint: "Run the command from an accessible project directory and retry.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::SkillInstallWriteFailed => ErrorClassification {
+                code: "filesystem.skill_install_write_failed",
+                message: "failed to write managed SKILL.md",
+                recoverable: true,
+                hint: "Ensure target directories are writable and retry.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::SkillInstallBlockedManualEdit => ErrorClassification {
+                code: "filesystem.skill_install_blocked_manual_edit",
+                message: "existing SKILL.md is manual or tampered",
+                recoverable: true,
+                hint: "Re-run with --force to overwrite the existing file.",
+                exit_code: ExitCode::Filesystem,
             },
             Self::Unknown => ErrorClassification {
                 code: "unknown",

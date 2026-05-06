@@ -142,6 +142,46 @@ fn diagnostics_codex_backend_errors_are_redacted_and_actionable() {
 }
 
 #[test]
+fn diagnostics_skill_install_confirmation_home_and_write_failures_are_redacted() {
+    let missing_yes = CliError::MissingInstallConfirmation;
+    assert_eq!(missing_yes.exit_code(), ExitCode::UsageOrConfig);
+    let missing_yes_json = parse_envelope(&missing_yes);
+    assert_eq!(
+        missing_yes_json["error"]["code"],
+        "usage.install_confirmation_required"
+    );
+
+    let home_missing = CliError::HomeUnavailable;
+    assert_eq!(home_missing.exit_code(), ExitCode::UsageOrConfig);
+    let home_missing_json = parse_envelope(&home_missing);
+    assert_eq!(
+        home_missing_json["error"]["code"],
+        "config.home_unavailable"
+    );
+
+    let write_failed = CliError::SkillInstallWriteFailed;
+    assert_eq!(write_failed.exit_code(), ExitCode::Filesystem);
+    let write_failed_json = parse_envelope(&write_failed);
+    assert_eq!(
+        write_failed_json["error"]["code"],
+        "filesystem.skill_install_write_failed"
+    );
+
+    let blocked = CliError::SkillInstallBlockedManualEdit;
+    assert_eq!(blocked.exit_code(), ExitCode::Filesystem);
+    let blocked_json = parse_envelope(&blocked);
+    assert_eq!(
+        blocked_json["error"]["code"],
+        "filesystem.skill_install_blocked_manual_edit"
+    );
+
+    let rendered = serde_json::to_string(&blocked_json).unwrap();
+    assert!(!rendered.contains("/tmp/"));
+    assert!(!rendered.contains("HOME"));
+    assert!(!rendered.contains("Bearer"));
+}
+
+#[test]
 fn diagnostics_unknown_fallback_is_stable() {
     let err = CliError::Unknown;
 
@@ -181,6 +221,11 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::CodexImageGenerationFailed {
             source_message: "codex failed".to_string(),
         },
+        CliError::MissingInstallConfirmation,
+        CliError::HomeUnavailable,
+        CliError::ProjectRootUnavailable,
+        CliError::SkillInstallWriteFailed,
+        CliError::SkillInstallBlockedManualEdit,
         CliError::Unknown,
     ];
 
