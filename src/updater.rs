@@ -88,6 +88,7 @@ pub struct ResolvedArtifact {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedArchive {
     pub binary_path: PathBuf,
+    pub binary_archive_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -428,11 +429,7 @@ pub fn run_update_with_installer<S: UpdateSource, I: BinaryInstaller>(
         return Ok(update_result(options, &artifact, "validated"));
     }
 
-    let extracted_binary = extract_binary_bytes(
-        &archive_bytes,
-        artifact.archive_kind,
-        &validated.binary_path,
-    )?;
+    let extracted_binary = extract_binary_bytes(&archive_bytes, artifact.archive_kind, &validated)?;
 
     installer.replace_binary(&options.current_executable, &extracted_binary)?;
 
@@ -495,11 +492,11 @@ pub fn validate_archive_bytes(
 fn extract_binary_bytes(
     bytes: &[u8],
     archive_kind: ArchiveKind,
-    validated_binary_path: &Path,
+    validated: &ValidatedArchive,
 ) -> Result<Vec<u8>, UpdateError> {
     match archive_kind {
-        ArchiveKind::TarGz => extract_from_tar_gz(bytes, validated_binary_path),
-        ArchiveKind::Zip => extract_from_zip(bytes, validated_binary_path),
+        ArchiveKind::TarGz => extract_from_tar_gz(bytes, &validated.binary_path),
+        ArchiveKind::Zip => extract_from_zip(bytes, &validated.binary_archive_path),
     }
 }
 
@@ -527,13 +524,12 @@ fn extract_from_tar_gz(bytes: &[u8], validated_binary_path: &Path) -> Result<Vec
     Err(UpdateError::ArchiveMissingRequiredFile)
 }
 
-fn extract_from_zip(bytes: &[u8], validated_binary_path: &Path) -> Result<Vec<u8>, UpdateError> {
+fn extract_from_zip(bytes: &[u8], validated_binary_archive_path: &str) -> Result<Vec<u8>, UpdateError> {
     let reader = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|_| UpdateError::ArchiveInvalid)?;
 
-    let validated = validated_binary_path.to_string_lossy();
     let mut file = archive
-        .by_name(&validated)
+        .by_name(validated_binary_archive_path)
         .map_err(|_| UpdateError::ArchiveMissingRequiredFile)?;
 
     let mut buffer = Vec::new();
@@ -563,9 +559,9 @@ fn validate_tar_gz_archive(
         let path = entry.path().map_err(|_| UpdateError::ArchiveInvalid)?;
         state.observe_path(path.as_ref(), expected_top_level_dir)?;
 
-        let mut sink = [0_u8; 1];
-        let _ = entry
-            .read(&mut sink)
+        let mut sink = Vec::new();
+        entry
+            .read_to_end(&mut sink)
             .map_err(|_| UpdateError::ArchiveInvalid)?;
     }
 
@@ -584,7 +580,7 @@ fn validate_zip_archive(
     let mut state = ValidationState::new(archive_kind, expected_binary_name);
 
     for idx in 0..archive.len() {
-        let file = archive
+        let mut file = archive
             .by_index(idx)
             .map_err(|_| UpdateError::ArchiveInvalid)?;
         if file.is_dir() {
@@ -593,6 +589,10 @@ fn validate_zip_archive(
 
         let path = Path::new(file.name());
         state.observe_path(path, expected_top_level_dir)?;
+
+        let mut sink = Vec::new();
+        file.read_to_end(&mut sink)
+            .map_err(|_| UpdateError::ArchiveInvalid)?;
     }
 
     state.finish()
@@ -602,6 +602,7 @@ struct ValidationState {
     archive_kind: ArchiveKind,
     expected_binary_name: String,
     binary_path: Option<PathBuf>,
+    binary_archive_path: Option<String>,
     has_readme: bool,
     has_readme_ko: bool,
 }
@@ -612,6 +613,7 @@ impl ValidationState {
             archive_kind,
             expected_binary_name: expected_binary_name.to_string(),
             binary_path: None,
+            binary_archive_path: None,
             has_readme: false,
             has_readme_ko: false,
         }
@@ -635,10 +637,12 @@ impl ValidationState {
         let file_name = relative.file_name().and_then(|value| value.to_str());
         if file_name == Some(self.expected_binary_name.as_str()) {
             let normalized = Path::new(expected_top_level_dir).join(relative);
+            let archive_name = path_to_archive_name(&normalized)?;
             if self.binary_path.is_some() {
                 return Err(UpdateError::ArchiveDuplicateBinary);
             }
             self.binary_path = Some(normalized);
+            self.binary_archive_path = Some(archive_name);
         }
 
         Ok(())
@@ -653,10 +657,42 @@ impl ValidationState {
             return Err(UpdateError::ArchiveMissingRequiredFile);
         };
 
+        let Some(binary_archive_path) = self.binary_archive_path else {
+            return Err(UpdateError::ArchiveMissingRequiredFile);
+        };
+
         let _ = self.archive_kind;
 
-        Ok(ValidatedArchive { binary_path })
+        Ok(ValidatedArchive {
+            binary_path,
+            binary_archive_path,
+        })
     }
+}
+
+fn path_to_archive_name(path: &Path) -> Result<String, UpdateError> {
+    let mut archive_name = String::new();
+
+    for component in path.components() {
+        match component {
+            Component::Normal(value) => {
+                if !archive_name.is_empty() {
+                    archive_name.push('/');
+                }
+                archive_name.push_str(&value.to_string_lossy());
+            }
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(UpdateError::ArchivePathTraversal)
+            }
+        }
+    }
+
+    if archive_name.is_empty() {
+        return Err(UpdateError::ArchiveInvalid);
+    }
+
+    Ok(archive_name)
 }
 
 fn normalize_archive_path(

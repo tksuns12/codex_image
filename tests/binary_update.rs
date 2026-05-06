@@ -230,6 +230,74 @@ fn validates_zip_archive_successfully() {
         validated.binary_path,
         Path::new("codex-image-v1.2.3-x86_64-pc-windows-msvc/codex-image.exe")
     );
+    assert_eq!(
+        validated.binary_archive_path,
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc/codex-image.exe"
+    );
+}
+
+#[test]
+fn rejects_zip_with_corrupt_payload_crc() {
+    let bytes = zip_fixture_with_corrupt_payload_crc(
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc",
+        "codex-image.exe",
+    );
+
+    let err = validate_archive_bytes(
+        ArchiveKind::Zip,
+        &bytes,
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc",
+        "codex-image.exe",
+    )
+    .expect_err("corrupt payload crc must fail");
+
+    assert!(matches!(err, UpdateError::ArchiveInvalid));
+}
+
+#[test]
+fn zip_validation_records_forward_slash_archive_names() {
+    let bytes = zip_fixture(
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc",
+        "codex-image.exe",
+        false,
+        true,
+        false,
+    );
+
+    let validated = validate_archive_bytes(
+        ArchiveKind::Zip,
+        &bytes,
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc",
+        "codex-image.exe",
+    )
+    .expect("zip should validate");
+
+    assert!(
+        !validated.binary_archive_path.contains('\\'),
+        "archive lookup path must remain slash-separated"
+    );
+    assert_eq!(
+        validated.binary_archive_path,
+        "codex-image-v1.2.3-x86_64-pc-windows-msvc/codex-image.exe"
+    );
+}
+
+#[test]
+fn rejects_tar_gz_with_corrupt_payload_crc() {
+    let bytes = tar_gz_fixture_with_corrupt_payload_crc(
+        "codex-image-v1.2.3-x86_64-unknown-linux-gnu",
+        "codex-image",
+    );
+
+    let err = validate_archive_bytes(
+        ArchiveKind::TarGz,
+        &bytes,
+        "codex-image-v1.2.3-x86_64-unknown-linux-gnu",
+        "codex-image",
+    )
+    .expect_err("corrupt tar/gzip payload must fail");
+
+    assert!(matches!(err, UpdateError::ArchiveInvalid));
 }
 
 #[test]
@@ -343,6 +411,24 @@ fn dry_run_downloads_and_validates_without_replacement() {
     let result = run_update(&source, &options(&binary_path, true)).expect("dry-run succeeds");
 
     assert_eq!(result, expected_result(&binary_path, "validated"));
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
+fn dry_run_rejects_corrupt_payload_before_reporting_validated() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
+        .with_download_result(Ok(corrupt_download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let err = run_update(&source, &options(&binary_path, true)).expect_err("dry-run must fail");
+
+    assert!(matches!(err, UpdateError::ArchiveInvalid));
     assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
 }
 
@@ -487,6 +573,14 @@ fn download_archive_fixture() -> Vec<u8> {
     match archive_kind {
         ArchiveKind::TarGz => tar_gz_fixture(&root, &binary_name, false, true, false),
         ArchiveKind::Zip => zip_fixture(&root, &binary_name, false, true, false),
+    }
+}
+
+fn corrupt_download_archive_fixture() -> Vec<u8> {
+    let (root, binary_name, archive_kind) = current_archive_root_and_binary();
+    match archive_kind {
+        ArchiveKind::TarGz => tar_gz_fixture_with_corrupt_payload_crc(&root, &binary_name),
+        ArchiveKind::Zip => zip_fixture_with_corrupt_payload_crc(&root, &binary_name),
     }
 }
 
@@ -666,6 +760,16 @@ fn tar_gz_fixture_with_traversal() -> Vec<u8> {
     compressed.finish().expect("finish gzip")
 }
 
+fn tar_gz_fixture_with_corrupt_payload_crc(top_level_dir: &str, binary_name: &str) -> Vec<u8> {
+    let mut bytes = tar_gz_fixture(top_level_dir, binary_name, false, true, false);
+    let truncate_to = bytes
+        .len()
+        .checked_sub(32)
+        .expect("gzip fixture should have enough bytes to truncate");
+    bytes.truncate(truncate_to);
+    bytes
+}
+
 fn raw_tar_with_single_file(path: &str, content: &[u8], mode: u32) -> Vec<u8> {
     let mut tar_bytes = Vec::new();
     let header = build_tar_header(path, content.len() as u64, mode);
@@ -789,4 +893,20 @@ fn zip_fixture_with_traversal() -> Vec<u8> {
         zip.finish().expect("finish zip");
     }
     cursor.into_inner()
+}
+
+fn zip_fixture_with_corrupt_payload_crc(top_level_dir: &str, binary_name: &str) -> Vec<u8> {
+    let mut bytes = zip_fixture(top_level_dir, binary_name, false, true, false);
+    let signature = b"PK\x01\x02";
+    let Some(offset) = bytes
+        .windows(signature.len())
+        .position(|window| window == signature)
+    else {
+        panic!("central directory signature missing");
+    };
+
+    // Central directory layout: signature (4) + 12 bytes metadata + CRC32 (4).
+    let crc_offset = offset + 16;
+    bytes[crc_offset] ^= 0xFF;
+    bytes
 }
