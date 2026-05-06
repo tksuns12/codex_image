@@ -4,5 +4,6 @@ pub mod config;
 pub mod diagnostics;
 pub mod output;
 pub mod skill_install_ux;
+pub mod updater;
 pub mod skill_installer;
 pub mod skills;
