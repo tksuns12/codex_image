@@ -65,6 +65,20 @@ fn cli_help_skill_update_help_documents_refresh_noop_and_manual_edit_protection(
 }
 
 #[test]
+fn cli_help_update_help_documents_release_archive_flags_and_version_tag() {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.arg("update").arg("--help");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("GitHub Release archives"))
+        .stdout(predicate::str::contains("--yes"))
+        .stdout(predicate::str::contains("--dry-run"))
+        .stdout(predicate::str::contains("--version <TAG>").or(predicate::str::contains("--version <tag>")))
+        .stdout(predicate::str::contains("v1.2.3"));
+}
+
+#[test]
 fn cli_help_removed_auth_lifecycle_commands() {
     for command in ["login", "status", "logout"] {
         let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");

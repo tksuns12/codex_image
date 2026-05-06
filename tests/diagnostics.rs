@@ -356,6 +356,53 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::SkillInstallBlockedManualEdit,
         CliError::SkillUpdateWriteFailed,
         CliError::SkillUpdateBlockedManualEdit,
+        CliError::BinaryUpdate(UpdateError::ConfirmationRequired),
+        CliError::BinaryUpdate(UpdateError::UnsupportedPlatform),
+        CliError::BinaryUpdate(UpdateError::ReleaseLookupFailed),
+        CliError::BinaryUpdate(UpdateError::AssetDownloadFailed),
+        CliError::BinaryUpdate(UpdateError::ArchiveInvalid),
+        CliError::BinaryUpdate(UpdateError::ReplacementFailed),
+        CliError::Unknown,
+    ];
+
+    for err in cases {
+        let json = parse_envelope(&err);
+        assert_error_contract_shape(&json);
+    }
+}
+[test]
+fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
+    let cases = [
+        CliError::Config(ConfigError::InvalidValue {
+            key: "CODEX_IMAGE_CODEX_BIN",
+        }),
+        CliError::OutputWriteFailed,
+        CliError::OutputVerificationFailed,
+        CliError::ImageGenerationResponseContract {
+            source_message: "generated path".to_string(),
+        },
+        CliError::CodexCliUnavailable,
+        CliError::CodexImageGenerationFailed {
+            source_message: "codex failed".to_string(),
+        },
+        CliError::MissingInstallConfirmation,
+        CliError::PartialInstallTargetSelection,
+        CliError::NoInstallTargetsInNonInteractiveMode,
+        CliError::InteractiveInstallSelectionCancelled,
+        CliError::InteractiveInstallPromptFailed,
+        CliError::InteractiveInstallSelectionEmpty,
+        CliError::MissingUpdateConfirmation,
+        CliError::PartialUpdateTargetSelection,
+        CliError::NoUpdateTargetsInNonInteractiveMode,
+        CliError::InteractiveUpdateSelectionCancelled,
+        CliError::InteractiveUpdatePromptFailed,
+        CliError::InteractiveUpdateSelectionEmpty,
+        CliError::HomeUnavailable,
+        CliError::ProjectRootUnavailable,
+        CliError::SkillInstallWriteFailed,
+        CliError::SkillInstallBlockedManualEdit,
+        CliError::SkillUpdateWriteFailed,
+        CliError::SkillUpdateBlockedManualEdit,
         CliError::Unknown,
     ];
 
