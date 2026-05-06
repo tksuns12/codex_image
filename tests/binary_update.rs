@@ -1,13 +1,17 @@
+use std::collections::VecDeque;
 use std::io::{Cursor, Write};
 use std::path::Path;
+use std::sync::Mutex;
 
 use codex_image::updater::{
-    parse_release_metadata, release_asset_name_for_tag, resolve_artifact, validate_archive_bytes,
-    ArchiveKind, Platform, UpdateError,
+    current_platform, parse_release_metadata, release_asset_name_for_tag, resolve_artifact,
+    run_update, run_update_with_installer, validate_archive_bytes, ArchiveKind, BinaryInstaller,
+    Platform, UpdateError, UpdateOptions, UpdateResult, UpdateSource,
 };
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use tar::Builder;
+use tempfile::tempdir;
 use zip::write::FileOptions;
 
 #[test]
@@ -262,6 +266,271 @@ fn rejects_archive_missing_binary() {
     .expect_err("missing binary must fail");
 
     assert!(matches!(err, UpdateError::ArchiveMissingRequiredFile));
+}
+
+#[test]
+fn update_stops_on_release_lookup_error() {
+    let source = FakeSource::new().with_release_result(Err(UpdateError::ReleaseLookupFailed));
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let err = run_update(&source, &options(&binary_path, true)).expect_err("must fail");
+
+    assert!(matches!(err, UpdateError::ReleaseLookupFailed));
+    assert_eq!(source.download_calls(), 0);
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
+fn update_stops_on_download_error() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Err(UpdateError::AssetDownloadFailed));
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let err = run_update(&source, &options(&binary_path, true)).expect_err("must fail");
+
+    assert!(matches!(err, UpdateError::AssetDownloadFailed));
+    assert_eq!(source.download_calls(), 1);
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
+fn update_stops_on_invalid_downloaded_archive() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(vec![1, 2, 3, 4]));
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let err = run_update(&source, &options(&binary_path, true)).expect_err("must fail");
+
+    assert!(
+        matches!(
+            err,
+            UpdateError::ArchiveInvalid
+                | UpdateError::ArchiveMissingRequiredFile
+                | UpdateError::ArchiveTopLevelDirectoryMismatch
+                | UpdateError::ArchivePathTraversal
+                | UpdateError::ArchiveDuplicateBinary
+        ),
+        "expected archive validation error, got {err:?}"
+    );
+    assert_eq!(source.download_calls(), 1);
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
+fn dry_run_downloads_and_validates_without_replacement() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old").expect("seed binary");
+
+    let result = run_update(&source, &options(&binary_path, true)).expect("dry-run succeeds");
+
+    assert_eq!(result, expected_result(&binary_path, "validated"));
+    assert_eq!(std::fs::read(&binary_path).expect("read binary"), b"old");
+}
+
+#[test]
+fn successful_update_replaces_binary_contents() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old-binary").expect("seed binary");
+
+    let result = run_update(&source, &options(&binary_path, false)).expect("update succeeds");
+
+    assert_eq!(result, expected_result(&binary_path, "updated"));
+    assert_eq!(
+        std::fs::read(&binary_path).expect("read binary"),
+        expected_updated_binary_bytes()
+    );
+}
+
+#[test]
+fn replacement_failure_restores_original_binary() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old-binary").expect("seed binary");
+
+    let err = run_update_with_installer(&source, &options(&binary_path, false), &FailingInstaller)
+        .expect_err("must fail");
+
+    assert!(matches!(err, UpdateError::ReplacementFailed));
+    assert_eq!(
+        std::fs::read(&binary_path).expect("read binary"),
+        b"old-binary"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn update_preserves_existing_unix_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let source = FakeSource::new()
+        .with_release_result(Ok(parse_release_metadata(release_fixture()).expect("release fixture")))
+        .with_download_result(Ok(download_archive_fixture()));
+
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old-binary").expect("seed binary");
+    std::fs::set_permissions(&binary_path, std::fs::Permissions::from_mode(0o751))
+        .expect("set permissions");
+
+    run_update(&source, &options(&binary_path, false)).expect("update succeeds");
+
+    let mode = std::fs::metadata(&binary_path)
+        .expect("metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o751);
+}
+
+fn expected_result(binary_path: &Path, status: &str) -> UpdateResult {
+    let platform = current_platform().expect("supported platform for test host");
+    UpdateResult {
+        status: status.to_string(),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        target_version: "v1.2.3".to_string(),
+        target: platform.rust_target().to_string(),
+        asset: release_asset_name_for_tag("v1.2.3", &platform),
+        binary_path: binary_path.display().to_string(),
+    }
+}
+
+fn expected_updated_binary_bytes() -> &'static [u8] {
+    let platform = current_platform().expect("supported platform for test host");
+    match platform.archive_kind() {
+        ArchiveKind::TarGz => b"#!/bin/sh\necho codex-image\n",
+        ArchiveKind::Zip => b"MZ",
+    }
+}
+
+fn current_binary_name() -> &'static str {
+    current_platform()
+        .expect("supported platform for test host")
+        .binary_name()
+}
+
+fn current_archive_root_and_binary() -> (String, String, ArchiveKind) {
+    let platform = current_platform().expect("supported platform for test host");
+    let asset = release_asset_name_for_tag("v1.2.3", &platform);
+    let root = match platform.archive_kind() {
+        ArchiveKind::TarGz => asset
+            .strip_suffix(".tar.gz")
+            .expect("tar.gz suffix")
+            .to_string(),
+        ArchiveKind::Zip => asset.strip_suffix(".zip").expect("zip suffix").to_string(),
+    };
+
+    (root, platform.binary_name().to_string(), platform.archive_kind())
+}
+
+fn download_archive_fixture() -> Vec<u8> {
+    let (root, binary_name, archive_kind) = current_archive_root_and_binary();
+    match archive_kind {
+        ArchiveKind::TarGz => tar_gz_fixture(&root, &binary_name, false, true, false),
+        ArchiveKind::Zip => zip_fixture(&root, &binary_name, false, true, false),
+    }
+}
+
+fn options(binary_path: &Path, dry_run: bool) -> UpdateOptions {
+    UpdateOptions {
+        current_executable: binary_path.to_path_buf(),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        requested_version: None,
+        dry_run,
+        confirm: true,
+    }
+}
+
+struct FailingInstaller;
+
+impl BinaryInstaller for FailingInstaller {
+    fn replace_binary(
+        &self,
+        _current_executable: &Path,
+        _new_binary_bytes: &[u8],
+    ) -> Result<(), UpdateError> {
+        Err(UpdateError::ReplacementFailed)
+    }
+}
+
+#[derive(Default)]
+struct FakeSource {
+    release_results: Mutex<VecDeque<Result<codex_image::updater::ReleaseMetadata, UpdateError>>>,
+    download_results: Mutex<VecDeque<Result<Vec<u8>, UpdateError>>>,
+    download_calls: Mutex<usize>,
+}
+
+impl FakeSource {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn with_release_result(self, result: Result<codex_image::updater::ReleaseMetadata, UpdateError>) -> Self {
+        self.release_results.lock().expect("lock").push_back(result);
+        self
+    }
+
+    fn with_download_result(self, result: Result<Vec<u8>, UpdateError>) -> Self {
+        self.download_results.lock().expect("lock").push_back(result);
+        self
+    }
+
+    fn download_calls(&self) -> usize {
+        *self.download_calls.lock().expect("lock")
+    }
+}
+
+impl UpdateSource for FakeSource {
+    fn fetch_release(&self, requested_version: Option<&str>) -> Result<codex_image::updater::ReleaseMetadata, UpdateError> {
+        match requested_version {
+            Some(version) => assert_eq!(version, "v1.2.3"),
+            None => {}
+        }
+
+        self.release_results
+            .lock()
+            .expect("lock")
+            .pop_front()
+            .expect("expected release result")
+    }
+
+    fn download_asset_to_path(&self, _download_url: &str, destination: &Path) -> Result<(), UpdateError> {
+        *self.download_calls.lock().expect("lock") += 1;
+        let next = self
+            .download_results
+            .lock()
+            .expect("lock")
+            .pop_front()
+            .expect("expected download result");
+
+        match next {
+            Ok(bytes) => {
+                std::fs::write(destination, bytes).map_err(|_| UpdateError::AssetDownloadFailed)
+            }
+            Err(err) => Err(err),
+        }
+    }
 }
 
 fn release_fixture() -> &'static str {

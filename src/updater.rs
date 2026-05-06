@@ -1,8 +1,10 @@
 use std::env::consts;
-use std::io::{Cursor, Read};
+use std::fs::{self, File};
+use std::io::{copy, Cursor, Read};
 use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveKind {
@@ -15,6 +17,13 @@ impl ArchiveKind {
         match self {
             Self::TarGz => "tar.gz",
             Self::Zip => "zip",
+        }
+    }
+
+    fn strip_extension<'a>(self, name: &'a str) -> Option<&'a str> {
+        match self {
+            Self::TarGz => name.strip_suffix(".tar.gz"),
+            Self::Zip => name.strip_suffix(".zip"),
         }
     }
 }
@@ -81,16 +90,183 @@ pub struct ValidatedArchive {
     pub binary_path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateOptions {
+    pub current_executable: PathBuf,
+    pub current_version: String,
+    pub requested_version: Option<String>,
+    pub dry_run: bool,
+    pub confirm: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct UpdateResult {
+    pub status: String,
+    pub current_version: String,
+    pub target_version: String,
+    pub target: String,
+    pub asset: String,
+    pub binary_path: String,
+}
+
+pub trait UpdateSource {
+    fn fetch_release(&self, requested_version: Option<&str>) -> Result<ReleaseMetadata, UpdateError>;
+    fn download_asset_to_path(
+        &self,
+        download_url: &str,
+        destination: &Path,
+    ) -> Result<(), UpdateError>;
+}
+
+pub trait BinaryInstaller {
+    fn replace_binary(
+        &self,
+        current_executable: &Path,
+        new_binary_bytes: &[u8],
+    ) -> Result<(), UpdateError>;
+}
+
+pub struct FilesystemBinaryInstaller;
+
+impl BinaryInstaller for FilesystemBinaryInstaller {
+    fn replace_binary(
+        &self,
+        current_executable: &Path,
+        new_binary_bytes: &[u8],
+    ) -> Result<(), UpdateError> {
+        let parent = current_executable
+            .parent()
+            .ok_or(UpdateError::CurrentExecutableUnavailable)?;
+
+        let file_name = current_executable
+            .file_name()
+            .ok_or(UpdateError::CurrentExecutableUnavailable)?
+            .to_string_lossy();
+
+        let token = unique_token("replace");
+        let candidate = parent.join(format!(".{file_name}.{token}.candidate"));
+        let backup = parent.join(format!(".{file_name}.{token}.backup"));
+
+        fs::write(&candidate, new_binary_bytes).map_err(|_| UpdateError::ReplacementFailed)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let existing_mode = fs::metadata(current_executable)
+                .map(|metadata| metadata.permissions().mode())
+                .unwrap_or(0o755);
+            let permissions = std::fs::Permissions::from_mode(existing_mode);
+            fs::set_permissions(&candidate, permissions).map_err(|_| UpdateError::ReplacementFailed)?;
+        }
+
+        fs::rename(current_executable, &backup).map_err(|_| UpdateError::ReplacementFailed)?;
+
+        if fs::rename(&candidate, current_executable).is_err() {
+            let _ = fs::rename(&backup, current_executable);
+            let _ = fs::remove_file(&candidate);
+            return Err(UpdateError::ReplacementFailed);
+        }
+
+        let _ = fs::remove_file(&backup);
+        Ok(())
+    }
+}
+
+pub struct GitHubReleaseClient {
+    client: reqwest::blocking::Client,
+    repository: String,
+    api_base: String,
+}
+
+impl GitHubReleaseClient {
+    pub fn new(repository: impl Into<String>) -> Result<Self, UpdateError> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("codex-image-updater")
+            .build()
+            .map_err(|_| UpdateError::ReleaseLookupFailed)?;
+
+        Ok(Self {
+            client,
+            repository: repository.into(),
+            api_base: "https://api.github.com".to_string(),
+        })
+    }
+
+    pub fn with_api_base(
+        repository: impl Into<String>,
+        api_base: impl Into<String>,
+    ) -> Result<Self, UpdateError> {
+        let mut client = Self::new(repository)?;
+        client.api_base = api_base.into();
+        Ok(client)
+    }
+
+    fn release_url(&self, requested_version: Option<&str>) -> String {
+        match requested_version {
+            Some(version) => format!(
+                "{}/repos/{}/releases/tags/{}",
+                self.api_base, self.repository, version
+            ),
+            None => format!(
+                "{}/repos/{}/releases/latest",
+                self.api_base, self.repository
+            ),
+        }
+    }
+}
+
+impl UpdateSource for GitHubReleaseClient {
+    fn fetch_release(&self, requested_version: Option<&str>) -> Result<ReleaseMetadata, UpdateError> {
+        let response = self
+            .client
+            .get(self.release_url(requested_version))
+            .send()
+            .map_err(|_| UpdateError::ReleaseLookupFailed)?;
+
+        if !response.status().is_success() {
+            return Err(UpdateError::ReleaseLookupFailed);
+        }
+
+        let text = response.text().map_err(|_| UpdateError::ReleaseLookupFailed)?;
+        parse_release_metadata(&text)
+    }
+
+    fn download_asset_to_path(
+        &self,
+        download_url: &str,
+        destination: &Path,
+    ) -> Result<(), UpdateError> {
+        let mut response = self
+            .client
+            .get(download_url)
+            .send()
+            .map_err(|_| UpdateError::AssetDownloadFailed)?;
+
+        if !response.status().is_success() {
+            return Err(UpdateError::AssetDownloadFailed);
+        }
+
+        let mut file = File::create(destination).map_err(|_| UpdateError::AssetDownloadFailed)?;
+        copy(&mut response, &mut file).map_err(|_| UpdateError::AssetDownloadFailed)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum UpdateError {
     #[error("unsupported platform")]
     UnsupportedPlatform,
+    #[error("release lookup failed")]
+    ReleaseLookupFailed,
     #[error("release metadata is invalid")]
     ReleaseMetadataInvalid,
     #[error("missing required release asset")]
     MissingReleaseAsset,
     #[error("duplicate release asset for platform")]
     DuplicateReleaseAsset,
+    #[error("asset download failed")]
+    AssetDownloadFailed,
     #[error("archive payload is invalid")]
     ArchiveInvalid,
     #[error("archive contains path traversal")]
@@ -101,6 +277,12 @@ pub enum UpdateError {
     ArchiveMissingRequiredFile,
     #[error("archive contains duplicate binary")]
     ArchiveDuplicateBinary,
+    #[error("update confirmation is required")]
+    ConfirmationRequired,
+    #[error("current executable path is unavailable")]
+    CurrentExecutableUnavailable,
+    #[error("binary replacement failed")]
+    ReplacementFailed,
 }
 
 pub fn current_platform() -> Result<Platform, UpdateError> {
@@ -178,10 +360,7 @@ pub fn resolve_artifact(
 ) -> Result<ResolvedArtifact, UpdateError> {
     let expected = release_asset_name_for_tag(&metadata.tag_name, platform);
 
-    let mut matches = metadata
-        .assets
-        .iter()
-        .filter(|asset| asset.name == expected);
+    let mut matches = metadata.assets.iter().filter(|asset| asset.name == expected);
     let first = matches.next().ok_or(UpdateError::MissingReleaseAsset)?;
 
     if matches.next().is_some() {
@@ -196,6 +375,80 @@ pub fn resolve_artifact(
         archive_kind: platform.archive_kind,
         binary_name: platform.binary_name.to_string(),
     })
+}
+
+pub fn run_update<S: UpdateSource>(
+    source: &S,
+    options: &UpdateOptions,
+) -> Result<UpdateResult, UpdateError> {
+    run_update_with_installer(source, options, &FilesystemBinaryInstaller)
+}
+
+pub fn run_update_with_installer<S: UpdateSource, I: BinaryInstaller>(
+    source: &S,
+    options: &UpdateOptions,
+    installer: &I,
+) -> Result<UpdateResult, UpdateError> {
+    if !options.dry_run && !options.confirm {
+        return Err(UpdateError::ConfirmationRequired);
+    }
+
+    let platform = current_platform()?;
+    let release = source.fetch_release(options.requested_version.as_deref())?;
+    let artifact = resolve_artifact(&release, &platform)?;
+
+    let temp_dir = std::env::temp_dir().join(unique_token("codex-image-update"));
+    fs::create_dir_all(&temp_dir).map_err(|_| UpdateError::AssetDownloadFailed)?;
+
+    let archive_path = temp_dir.join(&artifact.asset_name);
+    source.download_asset_to_path(&artifact.download_url, &archive_path)?;
+
+    let archive_bytes = fs::read(&archive_path).map_err(|_| UpdateError::AssetDownloadFailed)?;
+    let expected_root = expected_archive_root(&artifact)?;
+    let validated = validate_archive_bytes(
+        artifact.archive_kind,
+        &archive_bytes,
+        &expected_root,
+        &artifact.binary_name,
+    )?;
+
+    if options.dry_run {
+        return Ok(update_result(options, &artifact, "validated"));
+    }
+
+    let extracted_binary =
+        extract_binary_bytes(&archive_bytes, artifact.archive_kind, &validated.binary_path)?;
+
+    installer.replace_binary(&options.current_executable, &extracted_binary)?;
+
+    Ok(update_result(options, &artifact, "updated"))
+}
+
+fn expected_archive_root(artifact: &ResolvedArtifact) -> Result<String, UpdateError> {
+    let stem = artifact
+        .archive_kind
+        .strip_extension(&artifact.asset_name)
+        .ok_or(UpdateError::ReleaseMetadataInvalid)?;
+    Ok(stem.to_string())
+}
+
+fn update_result(options: &UpdateOptions, artifact: &ResolvedArtifact, status: &str) -> UpdateResult {
+    UpdateResult {
+        status: status.to_string(),
+        current_version: options.current_version.clone(),
+        target_version: artifact.version.clone(),
+        target: artifact.platform_target.clone(),
+        asset: artifact.asset_name.clone(),
+        binary_path: options.current_executable.display().to_string(),
+    }
+}
+
+fn unique_token(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("{prefix}-{nanos}")
 }
 
 pub fn validate_archive_bytes(
@@ -218,6 +471,56 @@ pub fn validate_archive_bytes(
             archive_kind,
         ),
     }
+}
+
+fn extract_binary_bytes(
+    bytes: &[u8],
+    archive_kind: ArchiveKind,
+    validated_binary_path: &Path,
+) -> Result<Vec<u8>, UpdateError> {
+    match archive_kind {
+        ArchiveKind::TarGz => extract_from_tar_gz(bytes, validated_binary_path),
+        ArchiveKind::Zip => extract_from_zip(bytes, validated_binary_path),
+    }
+}
+
+fn extract_from_tar_gz(bytes: &[u8], validated_binary_path: &Path) -> Result<Vec<u8>, UpdateError> {
+    let decoder = flate2::read::GzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(decoder);
+
+    let entries = archive.entries().map_err(|_| UpdateError::ArchiveInvalid)?;
+    for next in entries {
+        let mut entry = next.map_err(|_| UpdateError::ArchiveInvalid)?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path().map_err(|_| UpdateError::ArchiveInvalid)?;
+        if path.as_ref() == validated_binary_path {
+            let mut buffer = Vec::new();
+            entry
+                .read_to_end(&mut buffer)
+                .map_err(|_| UpdateError::ArchiveInvalid)?;
+            return Ok(buffer);
+        }
+    }
+
+    Err(UpdateError::ArchiveMissingRequiredFile)
+}
+
+fn extract_from_zip(bytes: &[u8], validated_binary_path: &Path) -> Result<Vec<u8>, UpdateError> {
+    let reader = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(reader).map_err(|_| UpdateError::ArchiveInvalid)?;
+
+    let validated = validated_binary_path.to_string_lossy();
+    let mut file = archive
+        .by_name(&validated)
+        .map_err(|_| UpdateError::ArchiveMissingRequiredFile)?;
+
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .map_err(|_| UpdateError::ArchiveInvalid)?;
+    Ok(buffer)
 }
 
 fn validate_tar_gz_archive(
@@ -262,9 +565,7 @@ fn validate_zip_archive(
     let mut state = ValidationState::new(archive_kind, expected_binary_name);
 
     for idx in 0..archive.len() {
-        let file = archive
-            .by_index(idx)
-            .map_err(|_| UpdateError::ArchiveInvalid)?;
+        let file = archive.by_index(idx).map_err(|_| UpdateError::ArchiveInvalid)?;
         if file.is_dir() {
             continue;
         }
