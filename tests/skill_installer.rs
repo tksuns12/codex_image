@@ -30,6 +30,12 @@ fn skill_installer_content_includes_expected_command_guidance() {
         ),
         "skill body must describe the non-interactive install command"
     );
+    assert!(
+        body.contains(
+            "codex-image skill update --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes"
+        ),
+        "skill body must describe the non-interactive update command"
+    );
 }
 
 #[test]
@@ -142,6 +148,33 @@ fn skill_installer_content_classifies_malformed_managed_metadata_as_tampered() {
 }
 
 #[test]
+fn skill_installer_filesystem_blocks_malformed_checksum_marker_by_default() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Claude,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let malformed = format!(
+        "<!-- codex-image:managed checksum=zzzz -->\n{}",
+        render_skill_body()
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    fs::write(plan.target_path(), &malformed).expect("seed malformed managed metadata");
+
+    let result = install_skill(&plan, SkillInstallOptions::default()).expect("install succeeds");
+    assert_eq!(result.status, SkillInstallStatus::BlockedManualEdit);
+
+    let preserved = fs::read_to_string(plan.target_path()).expect("malformed content preserved");
+    assert_eq!(preserved, malformed);
+}
+
+#[test]
 fn skill_installer_filesystem_plan_build_matches_resolved_path() {
     let home = tempdir().expect("home tempdir");
     let project = tempdir().expect("project tempdir");
@@ -242,7 +275,7 @@ fn skill_installer_filesystem_blocks_unmanaged_manual_edits_by_default() {
 
     let parent = plan.target_path().parent().expect("parent directory");
     fs::create_dir_all(parent).expect("create parent");
-    let manual = "# custom skill\nmanual notes\n";
+    let manual = "# custom skill\nnotes: preserve manual edits\napi_key=local-dev-only\n";
     fs::write(plan.target_path(), manual).expect("seed manual skill");
 
     let result = install_skill(&plan, SkillInstallOptions::default()).expect("install succeeds");

@@ -20,6 +20,7 @@ Use this skill when you need a reproducible image-generation workflow through th
 
 - `codex-image generate "<prompt>" --out <dir>`
 - `codex-image skill install --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes`
+- `codex-image skill update --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes`
 
 ## Supported tools
 
