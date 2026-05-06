@@ -19,15 +19,18 @@ fn cli_help_generate_help_documents_required_out_and_prompt_contract() {
 }
 
 #[test]
-fn cli_help_skill_install_help_documents_non_interactive_flags() {
+fn cli_help_skill_install_help_documents_non_interactive_and_interactive_modes() {
     let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
     cmd.arg("skill").arg("install").arg("--help");
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("--tool"))
-        .stdout(predicate::str::contains("--scope"))
+        .stdout(predicate::str::contains("--tool <TOOL>").or(predicate::str::contains("--tool <tool>")))
+        .stdout(predicate::str::contains("--scope <SCOPE>").or(predicate::str::contains("--scope <scope>")))
+        .stdout(predicate::str::contains("May be repeated"))
         .stdout(predicate::str::contains("--yes"))
+        .stdout(predicate::str::contains("non-interactive"))
+        .stdout(predicate::str::contains("interactive"))
         .stdout(predicate::str::contains("--force"))
         .stdout(predicate::str::contains("claude-code"))
         .stdout(predicate::str::contains("opencode"));

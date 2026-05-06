@@ -52,6 +52,10 @@ pub enum CliError {
     CodexImageGenerationFailed { source_message: String },
     #[error("missing required skill install confirmation")]
     MissingInstallConfirmation,
+    #[error("partial install target selection")]
+    PartialInstallTargetSelection,
+    #[error("no install targets selected in non-interactive mode")]
+    NoInstallTargetsInNonInteractiveMode,
     #[error("HOME is unavailable")]
     HomeUnavailable,
     #[error("current working directory is unavailable")]
@@ -127,6 +131,20 @@ impl CliError {
                 message: "skill install requires explicit confirmation",
                 recoverable: true,
                 hint: "Re-run with --yes to confirm non-interactive installation.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::PartialInstallTargetSelection => ErrorClassification {
+                code: "usage.install_partial_target_selection",
+                message: "skill install target selection is incomplete",
+                recoverable: true,
+                hint: "Provide at least one --tool and one --scope for non-interactive installation.",
+                exit_code: ExitCode::UsageOrConfig,
+            },
+            Self::NoInstallTargetsInNonInteractiveMode => ErrorClassification {
+                code: "usage.install_no_targets_non_interactive",
+                message: "no non-interactive install targets were selected",
+                recoverable: true,
+                hint: "Provide --tool and --scope flags with --yes, or run in an interactive terminal.",
                 exit_code: ExitCode::UsageOrConfig,
             },
             Self::HomeUnavailable => ErrorClassification {

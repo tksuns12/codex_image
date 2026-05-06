@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -6,6 +7,7 @@ use serde::Serialize;
 use crate::codex::generate_image_with_codex;
 use crate::diagnostics::CliError;
 use crate::output::write_generation_output_from_files;
+use crate::skill_install_ux::{expand_selected_targets, TargetSelectionState};
 use crate::skill_installer::{
     install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
@@ -39,15 +41,16 @@ enum Commands {
 
 #[derive(Debug, Subcommand)]
 enum SkillCommands {
-    /// Install the codex-image SKILL.md file for a supported tool and scope.
+    /// Install the codex-image SKILL.md file for selected supported tool/scope targets.
+    /// Omit flags to use interactive target selection when running in a terminal.
     Install {
-        /// Tool slug to install for.
+        /// Tool slug to install for. May be repeated for deterministic multi-target installs.
         #[arg(long, value_enum)]
-        tool: ToolArg,
-        /// Installation scope.
+        tool: Vec<ToolArg>,
+        /// Installation scope. May be repeated for deterministic multi-target installs.
         #[arg(long, value_enum)]
-        scope: ScopeArg,
-        /// Required non-interactive confirmation flag.
+        scope: Vec<ScopeArg>,
+        /// Required confirmation for non-interactive installs that pass --tool/--scope.
         #[arg(long)]
         yes: bool,
         /// Overwrite manual or tampered existing content.
@@ -153,46 +156,68 @@ fn dispatch_skill(command: SkillCommands) -> Result<(), CliError> {
             scope,
             yes,
             force,
-        } => install_skill_command(tool.into(), scope.into(), yes, force),
+        } => install_skill_command(&tool, &scope, yes, force),
     }
 }
 
 fn install_skill_command(
-    tool: SupportedTool,
-    scope: SkillScope,
+    tools: &[ToolArg],
+    scopes: &[ScopeArg],
     yes: bool,
     force: bool,
 ) -> Result<(), CliError> {
+    let selected_tools: Vec<SupportedTool> = tools.iter().copied().map(Into::into).collect();
+    let selected_scopes: Vec<SkillScope> = scopes.iter().copied().map(Into::into).collect();
+
+    let selection = expand_selected_targets(&selected_tools, &selected_scopes);
+    match selection.state {
+        TargetSelectionState::PartialTargets => {
+            return Err(CliError::PartialInstallTargetSelection);
+        }
+        TargetSelectionState::NoTargets => {
+            if !std::io::stdin().is_terminal() {
+                return Err(CliError::NoInstallTargetsInNonInteractiveMode);
+            }
+            return Err(CliError::NoInstallTargetsInNonInteractiveMode);
+        }
+        TargetSelectionState::Complete => {}
+    }
+
     if !yes {
         return Err(CliError::MissingInstallConfirmation);
     }
 
     let project_root = std::env::current_dir().map_err(|_| CliError::ProjectRootUnavailable)?;
-    let home_dir = resolve_home_dir(scope, &project_root)?;
-    let plan = SkillInstallPlan::build(tool, scope, &home_dir, &project_root);
+    let home_dir = resolve_home_dir(&selection.selected_scopes, &project_root)?;
 
-    let result = install_skill(&plan, SkillInstallOptions { force })
-        .map_err(|_| CliError::SkillInstallWriteFailed)?;
+    let mut outputs = Vec::with_capacity(selection.targets.len());
+    for target in selection.targets {
+        let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, &project_root);
+        let result = install_skill(&plan, SkillInstallOptions { force })
+            .map_err(|_| CliError::SkillInstallWriteFailed)?;
 
-    if result.status == SkillInstallStatus::BlockedManualEdit {
-        return Err(CliError::SkillInstallBlockedManualEdit);
+        if result.status == SkillInstallStatus::BlockedManualEdit {
+            return Err(CliError::SkillInstallBlockedManualEdit);
+        }
+
+        outputs.push(SkillInstallOutput {
+            tool: target.tool.slug(),
+            scope: target.scope.slug(),
+            status: result.status.slug(),
+            target_path: result.path.display().to_string(),
+        });
     }
 
-    let output = SkillInstallOutput {
-        tool: tool.slug(),
-        scope: scope.slug(),
-        status: result.status.slug(),
-        target_path: result.path.display().to_string(),
-    };
-
-    let line = serde_json::to_string(&output).map_err(|_| CliError::Unknown)?;
-    println!("{line}");
+    for output in outputs {
+        let line = serde_json::to_string(&output).map_err(|_| CliError::Unknown)?;
+        println!("{line}");
+    }
 
     Ok(())
 }
 
-fn resolve_home_dir(scope: SkillScope, project_root: &Path) -> Result<PathBuf, CliError> {
-    if scope == SkillScope::Global {
+fn resolve_home_dir(scopes: &[SkillScope], project_root: &Path) -> Result<PathBuf, CliError> {
+    if scopes.contains(&SkillScope::Global) {
         return read_home_dir().ok_or(CliError::HomeUnavailable);
     }
 

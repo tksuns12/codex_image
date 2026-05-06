@@ -11,6 +11,17 @@ fn parse_json_line(bytes: Vec<u8>) -> Value {
     serde_json::from_str(trimmed).expect("output should be valid json")
 }
 
+fn parse_json_lines(bytes: Vec<u8>) -> Vec<Value> {
+    let text = String::from_utf8(bytes).expect("output should be utf-8");
+    let trimmed = text.trim_end();
+    assert!(!trimmed.is_empty(), "output must not be empty");
+
+    trimmed
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each output line should be valid json"))
+        .collect()
+}
+
 #[test]
 fn skill_install_cli_project_install_then_repeat_is_created_then_unchanged() {
     let project = tempdir().expect("project tempdir");
@@ -144,6 +155,75 @@ fn skill_install_cli_blocks_manual_edit_by_default_and_force_overwrites() {
 }
 
 #[test]
+fn skill_install_cli_multi_target_repeated_flags_emit_deterministic_json_lines() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    let output = cmd
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("install")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("global")
+        .arg("--scope")
+        .arg("project")
+        .arg("--scope")
+        .arg("global")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("multi-target install runs");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let lines = parse_json_lines(output.stdout);
+    assert_eq!(lines.len(), 2, "deduped tool/scope should produce 2 targets");
+
+    assert_eq!(lines[0]["tool"], "pi");
+    assert_eq!(lines[0]["scope"], "global");
+    assert_eq!(lines[0]["status"], "created");
+
+    let expected_global = home
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+    assert_eq!(
+        lines[0]["target_path"].as_str(),
+        Some(expected_global.to_string_lossy().as_ref())
+    );
+
+    assert_eq!(lines[1]["tool"], "pi");
+    assert_eq!(lines[1]["scope"], "project");
+    assert_eq!(lines[1]["status"], "created");
+
+    let expected_project = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+    assert_eq!(
+        lines[1]["target_path"].as_str(),
+        Some(expected_project.to_string_lossy().as_ref())
+    );
+
+    assert!(expected_global.is_file());
+    assert!(expected_project.is_file());
+}
+
+#[test]
 fn skill_install_cli_missing_yes_and_missing_home_emit_redacted_errors() {
     let project = tempdir().expect("project tempdir");
 
@@ -204,6 +284,66 @@ fn skill_install_cli_missing_yes_and_missing_home_emit_redacted_errors() {
     let rendered = serde_json::to_string(&missing_home_json).expect("json serializes");
     assert!(!rendered.contains(project.path().to_string_lossy().as_ref()));
     assert!(!rendered.contains("HOME="));
+}
+
+#[test]
+fn skill_install_cli_partial_flags_and_no_target_non_tty_fail_without_writes() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+
+    let target = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+
+    let mut partial = Command::cargo_bin("codex-image").expect("binary exists");
+    let partial_output = partial
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("install")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("partial command runs");
+
+    assert_eq!(partial_output.status.code(), Some(2));
+    assert!(partial_output.stdout.is_empty());
+
+    let partial_json = parse_json_line(partial_output.stderr);
+    assert_eq!(
+        partial_json["error"]["code"],
+        "usage.install_partial_target_selection"
+    );
+    assert!(
+        !target.exists(),
+        "filesystem writes must not happen on partial target selection"
+    );
+
+    let mut none_selected = Command::cargo_bin("codex-image").expect("binary exists");
+    let none_selected_output = none_selected
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("install")
+        .env("HOME", home.path())
+        .output()
+        .expect("no target selection command runs");
+
+    assert_eq!(none_selected_output.status.code(), Some(2));
+    assert!(none_selected_output.stdout.is_empty());
+
+    let none_selected_json = parse_json_line(none_selected_output.stderr);
+    assert_eq!(
+        none_selected_json["error"]["code"],
+        "usage.install_no_targets_non_interactive"
+    );
+    assert!(
+        !target.exists(),
+        "filesystem writes must not happen when no non-interactive target flags are selected"
+    );
 }
 
 #[test]

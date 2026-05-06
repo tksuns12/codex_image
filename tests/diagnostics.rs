@@ -142,7 +142,7 @@ fn diagnostics_codex_backend_errors_are_redacted_and_actionable() {
 }
 
 #[test]
-fn diagnostics_skill_install_confirmation_home_and_write_failures_are_redacted() {
+fn diagnostics_skill_install_confirmation_target_selection_home_and_write_failures_are_redacted() {
     let missing_yes = CliError::MissingInstallConfirmation;
     assert_eq!(missing_yes.exit_code(), ExitCode::UsageOrConfig);
     let missing_yes_json = parse_envelope(&missing_yes);
@@ -151,13 +151,26 @@ fn diagnostics_skill_install_confirmation_home_and_write_failures_are_redacted()
         "usage.install_confirmation_required"
     );
 
+    let partial_targets = CliError::PartialInstallTargetSelection;
+    assert_eq!(partial_targets.exit_code(), ExitCode::UsageOrConfig);
+    let partial_targets_json = parse_envelope(&partial_targets);
+    assert_eq!(
+        partial_targets_json["error"]["code"],
+        "usage.install_partial_target_selection"
+    );
+
+    let no_targets = CliError::NoInstallTargetsInNonInteractiveMode;
+    assert_eq!(no_targets.exit_code(), ExitCode::UsageOrConfig);
+    let no_targets_json = parse_envelope(&no_targets);
+    assert_eq!(
+        no_targets_json["error"]["code"],
+        "usage.install_no_targets_non_interactive"
+    );
+
     let home_missing = CliError::HomeUnavailable;
     assert_eq!(home_missing.exit_code(), ExitCode::UsageOrConfig);
     let home_missing_json = parse_envelope(&home_missing);
-    assert_eq!(
-        home_missing_json["error"]["code"],
-        "config.home_unavailable"
-    );
+    assert_eq!(home_missing_json["error"]["code"], "config.home_unavailable");
 
     let write_failed = CliError::SkillInstallWriteFailed;
     assert_eq!(write_failed.exit_code(), ExitCode::Filesystem);
@@ -222,6 +235,8 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
             source_message: "codex failed".to_string(),
         },
         CliError::MissingInstallConfirmation,
+        CliError::PartialInstallTargetSelection,
+        CliError::NoInstallTargetsInNonInteractiveMode,
         CliError::HomeUnavailable,
         CliError::ProjectRootUnavailable,
         CliError::SkillInstallWriteFailed,
