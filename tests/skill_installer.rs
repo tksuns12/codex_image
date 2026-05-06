@@ -1,8 +1,12 @@
+use std::fs;
+
 use codex_image::skill_installer::{
-    classify_skill_content, managed_checksum, managed_marker_line, render_managed_skill_content,
-    render_skill_body, SkillContentClassification,
+    classify_skill_content, install_skill, managed_checksum, managed_marker_line,
+    render_managed_skill_content, render_skill_body, SkillContentClassification,
+    SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
-use codex_image::skills::SupportedTool;
+use codex_image::skills::{resolve_skill_path, SkillScope, SupportedTool};
+use tempfile::tempdir;
 
 #[test]
 fn skill_installer_content_includes_frontmatter_and_core_sections() {
@@ -135,4 +139,192 @@ fn skill_installer_content_classifies_malformed_managed_metadata_as_tampered() {
         classify_skill_content(Some(&malformed)),
         SkillContentClassification::ManagedTampered
     );
+}
+
+#[test]
+fn skill_installer_filesystem_plan_build_matches_resolved_path() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+
+    let plan = SkillInstallPlan::build(
+        SupportedTool::OpenCode,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    assert_eq!(
+        plan.target_path(),
+        resolve_skill_path(
+            SupportedTool::OpenCode,
+            SkillScope::ProjectLocal,
+            home.path(),
+            project.path()
+        )
+    );
+}
+
+#[test]
+fn skill_installer_filesystem_creates_missing_skill_file() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Pi,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    assert!(!plan.target_path().exists());
+
+    let result = install_skill(&plan, SkillInstallOptions::default()).expect("install succeeds");
+    assert_eq!(result.status, SkillInstallStatus::Created);
+    assert_eq!(result.path, plan.target_path());
+
+    let written = fs::read_to_string(plan.target_path()).expect("managed file written");
+    assert_eq!(written, render_managed_skill_content());
+}
+
+#[test]
+fn skill_installer_filesystem_noops_when_already_managed_current() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Claude,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let first = install_skill(&plan, SkillInstallOptions::default()).expect("first install");
+    assert_eq!(first.status, SkillInstallStatus::Created);
+
+    let second = install_skill(&plan, SkillInstallOptions::default()).expect("second install");
+    assert_eq!(second.status, SkillInstallStatus::Unchanged);
+}
+
+#[test]
+fn skill_installer_filesystem_updates_valid_managed_outdated_content() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::ClaudeCode,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (old)");
+    let outdated = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    fs::write(plan.target_path(), outdated).expect("seed outdated managed content");
+
+    let result = install_skill(&plan, SkillInstallOptions::default()).expect("update succeeds");
+    assert_eq!(result.status, SkillInstallStatus::Updated);
+
+    let rewritten = fs::read_to_string(plan.target_path()).expect("managed content rewritten");
+    assert_eq!(rewritten, render_managed_skill_content());
+}
+
+#[test]
+fn skill_installer_filesystem_blocks_unmanaged_manual_edits_by_default() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Codex,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    let manual = "# custom skill\nmanual notes\n";
+    fs::write(plan.target_path(), manual).expect("seed manual skill");
+
+    let result = install_skill(&plan, SkillInstallOptions::default()).expect("install succeeds");
+    assert_eq!(result.status, SkillInstallStatus::BlockedManualEdit);
+
+    let current = fs::read_to_string(plan.target_path()).expect("manual content preserved");
+    assert_eq!(current, manual);
+}
+
+#[test]
+fn skill_installer_filesystem_blocks_tampered_managed_edits_by_default() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::OpenCode,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let tampered = render_managed_skill_content().replacen(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in personal desktop directories.",
+        1,
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    fs::write(plan.target_path(), &tampered).expect("seed tampered managed content");
+
+    let result = install_skill(&plan, SkillInstallOptions::default()).expect("install succeeds");
+    assert_eq!(result.status, SkillInstallStatus::BlockedManualEdit);
+
+    let current = fs::read_to_string(plan.target_path()).expect("tampered content preserved");
+    assert_eq!(current, tampered);
+}
+
+#[test]
+fn skill_installer_filesystem_force_overwrites_blocked_manual_or_tampered_content() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Pi,
+        SkillScope::Global,
+        home.path(),
+        project.path(),
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    fs::write(plan.target_path(), "# my custom global skill\n").expect("seed manual content");
+
+    let result = install_skill(&plan, SkillInstallOptions { force: true }).expect("forced install");
+    assert_eq!(result.status, SkillInstallStatus::ForcedOverwrite);
+
+    let current = fs::read_to_string(plan.target_path()).expect("forced rewrite");
+    assert_eq!(current, render_managed_skill_content());
+}
+
+#[test]
+fn skill_installer_filesystem_codex_and_pi_duplicate_path_is_idempotent() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+
+    let codex_plan = SkillInstallPlan::build(
+        SupportedTool::Codex,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+    let pi_plan = SkillInstallPlan::build(
+        SupportedTool::Pi,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    assert_eq!(codex_plan.target_path(), pi_plan.target_path());
+
+    let first = install_skill(&codex_plan, SkillInstallOptions::default()).expect("first install");
+    assert_eq!(first.status, SkillInstallStatus::Created);
+
+    let second = install_skill(&pi_plan, SkillInstallOptions::default()).expect("second install");
+    assert_eq!(second.status, SkillInstallStatus::Unchanged);
 }

@@ -1,3 +1,9 @@
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+use crate::skills::{resolve_skill_path, SkillScope, SupportedTool};
+
 const MANAGED_MARKER_PREFIX: &str = "<!-- codex-image:managed checksum=";
 const MANAGED_MARKER_SUFFIX: &str = " -->";
 
@@ -41,6 +47,111 @@ pub enum SkillContentClassification {
     ManagedOutdated,
     ManualUnmanaged,
     ManagedTampered,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillInstallPlan {
+    tool: SupportedTool,
+    scope: SkillScope,
+    target_path: PathBuf,
+}
+
+impl SkillInstallPlan {
+    pub fn build(
+        tool: SupportedTool,
+        scope: SkillScope,
+        home_dir: &Path,
+        project_root: &Path,
+    ) -> Self {
+        let target_path = resolve_skill_path(tool, scope, home_dir, project_root);
+        Self {
+            tool,
+            scope,
+            target_path,
+        }
+    }
+
+    pub fn tool(&self) -> SupportedTool {
+        self.tool
+    }
+
+    pub fn scope(&self) -> SkillScope {
+        self.scope
+    }
+
+    pub fn target_path(&self) -> &Path {
+        &self.target_path
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SkillInstallOptions {
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillInstallStatus {
+    Created,
+    Unchanged,
+    Updated,
+    BlockedManualEdit,
+    ForcedOverwrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillInstallResult {
+    pub status: SkillInstallStatus,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SkillInstallError {
+    #[error("failed to read existing skill file")]
+    ReadFailed,
+    #[error("failed to create parent directory")]
+    CreateParentDirFailed,
+    #[error("failed to write skill file")]
+    WriteFailed,
+    #[error("failed to rename temporary skill file")]
+    RenameFailed,
+    #[error("skill path has no parent directory")]
+    MissingParentDirectory,
+}
+
+pub fn install_skill(
+    plan: &SkillInstallPlan,
+    options: SkillInstallOptions,
+) -> Result<SkillInstallResult, SkillInstallError> {
+    let existing_content = read_existing_skill(plan.target_path())?;
+    let classification = classify_skill_content(existing_content.as_deref());
+
+    let desired_content = render_managed_skill_content();
+
+    let status = match classification {
+        SkillContentClassification::Missing => {
+            write_managed_skill_file(plan.target_path(), &desired_content)?;
+            SkillInstallStatus::Created
+        }
+        SkillContentClassification::ManagedCurrent => SkillInstallStatus::Unchanged,
+        SkillContentClassification::ManagedOutdated => {
+            write_managed_skill_file(plan.target_path(), &desired_content)?;
+            SkillInstallStatus::Updated
+        }
+        SkillContentClassification::ManualUnmanaged
+        | SkillContentClassification::ManagedTampered => {
+            if options.force {
+                write_managed_skill_file(plan.target_path(), &desired_content)?;
+                SkillInstallStatus::ForcedOverwrite
+            } else {
+                SkillInstallStatus::BlockedManualEdit
+            }
+        }
+    };
+
+    Ok(SkillInstallResult {
+        status,
+        path: plan.target_path().to_path_buf(),
+    })
 }
 
 pub fn render_skill_body() -> &'static str {
@@ -93,6 +204,36 @@ pub fn classify_skill_content(existing_content: Option<&str>) -> SkillContentCla
     } else {
         SkillContentClassification::ManagedOutdated
     }
+}
+
+fn read_existing_skill(path: &Path) -> Result<Option<String>, SkillInstallError> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(Some(content)),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(SkillInstallError::ReadFailed),
+    }
+}
+
+fn write_managed_skill_file(path: &Path, content: &str) -> Result<(), SkillInstallError> {
+    let Some(parent) = path.parent() else {
+        return Err(SkillInstallError::MissingParentDirectory);
+    };
+
+    fs::create_dir_all(parent).map_err(|_| SkillInstallError::CreateParentDirFailed)?;
+
+    let tmp_file = parent.join(format!(
+        ".{}.tmp",
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("SKILL.md")
+    ));
+
+    fs::write(&tmp_file, content).map_err(|_| SkillInstallError::WriteFailed)?;
+
+    fs::rename(&tmp_file, path).map_err(|_| {
+        let _ = fs::remove_file(&tmp_file);
+        SkillInstallError::RenameFailed
+    })
 }
 
 fn split_managed_content(content: &str) -> Option<(&str, &str)> {
