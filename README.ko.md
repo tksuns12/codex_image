@@ -144,6 +144,13 @@ codex-image skill install
 
 선택 토글은 `Space`, 확정은 `Enter`를 사용합니다.
 
+상호작용 선택 동작:
+- 이미 설치된 대상은 기본 선택 상태로 표시됩니다.
+- 구버전 관리 대상은 기본 선택 + `installed:outdated` 라벨로 표시됩니다.
+- 수동 수정/변조 대상은 기본 선택 + `installed:protected` 라벨로 표시됩니다.
+- 설치된 관리 대상을 체크 해제하면 `codex-image skill install`이 해당 `SKILL.md`를 삭제합니다.
+- 수동/변조 대상 삭제는 기본 차단되며 `--force`로만 허용됩니다.
+
 에이전트/CI용 고정 명령:
 
 ```bash

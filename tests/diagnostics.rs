@@ -216,7 +216,23 @@ fn diagnostics_skill_install_confirmation_target_selection_home_and_write_failur
         "filesystem.skill_install_blocked_manual_edit"
     );
 
-    let rendered = serde_json::to_string(&blocked_json).unwrap();
+    let delete_failed = CliError::SkillInstallDeleteFailed;
+    assert_eq!(delete_failed.exit_code(), ExitCode::Filesystem);
+    let delete_failed_json = parse_envelope(&delete_failed);
+    assert_eq!(
+        delete_failed_json["error"]["code"],
+        "filesystem.skill_install_delete_failed"
+    );
+
+    let delete_blocked = CliError::SkillInstallDeleteBlockedManualEdit;
+    assert_eq!(delete_blocked.exit_code(), ExitCode::Filesystem);
+    let delete_blocked_json = parse_envelope(&delete_blocked);
+    assert_eq!(
+        delete_blocked_json["error"]["code"],
+        "filesystem.skill_install_delete_blocked_manual_edit"
+    );
+
+    let rendered = serde_json::to_string(&delete_blocked_json).unwrap();
     assert!(!rendered.contains("/tmp/"));
     assert!(!rendered.contains("HOME"));
     assert!(!rendered.contains("Bearer"));
@@ -452,6 +468,8 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::ProjectRootUnavailable,
         CliError::SkillInstallWriteFailed,
         CliError::SkillInstallBlockedManualEdit,
+        CliError::SkillInstallDeleteFailed,
+        CliError::SkillInstallDeleteBlockedManualEdit,
         CliError::SkillUpdateWriteFailed,
         CliError::SkillUpdateBlockedManualEdit,
         CliError::BinaryUpdate(UpdateError::ConfirmationRequired),

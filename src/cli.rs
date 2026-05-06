@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
@@ -9,13 +10,14 @@ use crate::diagnostics::CliError;
 use crate::output::write_generation_output_from_files;
 use crate::skill_install_ux::{
     expand_selected_targets, interactive_target_options, select_interactive_targets,
-    DialoguerTargetSelector, InstallTargetSelector, InteractiveSelectionError, SkillInstallTarget,
-    TargetSelectionState,
+    DialoguerTargetSelector, InstallTargetSelector, InteractiveSelectionError,
+    InteractiveTargetOption, SkillInstallTarget, TargetSelectionState,
 };
 use crate::skill_installer::{
-    install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
+    install_skill, uninstall_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
+    SkillUninstallStatus,
 };
-use crate::skills::{SkillScope, SupportedTool};
+use crate::skills::{resolve_skill_path, SkillScope, SupportedTool};
 use crate::updater::{
     run_update_with_installer, BinaryInstaller, FilesystemBinaryInstaller, GitHubReleaseClient,
     UpdateOptions, UpdateResult, UpdateSource,
@@ -136,14 +138,6 @@ impl From<ScopeArg> for SkillScope {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct SkillInstallOutput {
-    tool: &'static str,
-    scope: &'static str,
-    status: &'static str,
-    target_path: String,
-}
-
 #[derive(Clone, Copy, Debug)]
 enum SkillCommandOperation {
     Install,
@@ -203,6 +197,20 @@ impl SkillCommandOperation {
     const fn blocked_manual_edit_error(self) -> CliError {
         match self {
             Self::Install => CliError::SkillInstallBlockedManualEdit,
+            Self::Update => CliError::SkillUpdateBlockedManualEdit,
+        }
+    }
+
+    const fn delete_failed_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::SkillInstallDeleteFailed,
+            Self::Update => CliError::SkillUpdateWriteFailed,
+        }
+    }
+
+    const fn delete_blocked_manual_edit_error(self) -> CliError {
+        match self {
+            Self::Install => CliError::SkillInstallDeleteBlockedManualEdit,
             Self::Update => CliError::SkillUpdateBlockedManualEdit,
         }
     }
@@ -407,6 +415,27 @@ fn install_skill_command_with_selector_and_project_root(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone)]
+struct SkillCommandPlan {
+    install_targets: Vec<SkillInstallTarget>,
+    uninstall_targets: Vec<SkillInstallTarget>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SkillActionOutput {
+    tool: &'static str,
+    scope: &'static str,
+    status: &'static str,
+    target_path: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SkillAction {
+    InstallOrUpdate(SkillInstallTarget),
+    Uninstall(SkillInstallTarget),
+}
+
+#[allow(clippy::too_many_arguments)]
 fn skill_command_with_selector_and_project_root(
     operation: SkillCommandOperation,
     tools: &[ToolArg],
@@ -426,12 +455,15 @@ fn skill_command_with_selector_and_project_root(
         return Err(operation.partial_selection_error());
     }
 
-    let targets = match selection.state {
+    let plan = match selection.state {
         TargetSelectionState::Complete => {
             if !yes {
                 return Err(operation.missing_confirmation_error());
             }
-            selection.targets
+            SkillCommandPlan {
+                install_targets: selection.targets,
+                uninstall_targets: Vec::new(),
+            }
         }
         TargetSelectionState::NoTargets => {
             if !interactive_mode {
@@ -441,48 +473,146 @@ fn skill_command_with_selector_and_project_root(
             let home_for_options =
                 effective_home_dir(home_dir_override).ok_or(CliError::HomeUnavailable)?;
             let options = interactive_target_options(&home_for_options, project_root);
-            select_interactive_targets(selector, &options).map_err(|error| match error {
-                InteractiveSelectionError::Cancelled => operation.interactive_cancelled_error(),
-                InteractiveSelectionError::PromptFailed => {
-                    operation.interactive_prompt_failed_error()
-                }
-                InteractiveSelectionError::EmptySelection => {
-                    operation.interactive_empty_selection_error()
-                }
-            })?
+            let selected_targets =
+                select_interactive_targets(selector, &options).map_err(|error| match error {
+                    InteractiveSelectionError::Cancelled => operation.interactive_cancelled_error(),
+                    InteractiveSelectionError::PromptFailed => {
+                        operation.interactive_prompt_failed_error()
+                    }
+                    InteractiveSelectionError::EmptySelection => {
+                        operation.interactive_empty_selection_error()
+                    }
+                })?;
+
+            let uninstall_targets = if matches!(operation, SkillCommandOperation::Install) {
+                interactive_uninstall_targets(
+                    &options,
+                    &selected_targets,
+                    &home_for_options,
+                    project_root,
+                )
+            } else {
+                Vec::new()
+            };
+
+            SkillCommandPlan {
+                install_targets: selected_targets,
+                uninstall_targets,
+            }
         }
         TargetSelectionState::PartialTargets => unreachable!("partial targets already handled"),
     };
 
-    run_skill_write_loop(operation, targets, force, project_root, home_dir_override)
+    run_skill_action_loop(operation, plan, force, project_root, home_dir_override)
 }
 
-fn run_skill_write_loop(
+fn interactive_uninstall_targets(
+    options: &[InteractiveTargetOption],
+    selected_targets: &[SkillInstallTarget],
+    home_dir: &Path,
+    project_root: &Path,
+) -> Vec<SkillInstallTarget> {
+    let selected_paths: HashSet<PathBuf> = selected_targets
+        .iter()
+        .map(|target| resolve_skill_path(target.tool, target.scope, home_dir, project_root))
+        .collect();
+
+    let mut uninstall_by_path = HashMap::<PathBuf, SkillInstallTarget>::new();
+    for option in options {
+        if !option.install_state.is_installed() {
+            continue;
+        }
+
+        if selected_paths.contains(&option.target_path) {
+            continue;
+        }
+
+        uninstall_by_path
+            .entry(option.target_path.clone())
+            .or_insert(option.target);
+    }
+
+    let mut uninstall_targets: Vec<SkillInstallTarget> = uninstall_by_path.into_values().collect();
+    uninstall_targets.sort_by_key(|target| {
+        (
+            SupportedTool::all()
+                .iter()
+                .position(|tool| tool == &target.tool)
+                .unwrap_or(usize::MAX),
+            SkillScope::all()
+                .iter()
+                .position(|scope| scope == &target.scope)
+                .unwrap_or(usize::MAX),
+        )
+    });
+    uninstall_targets
+}
+
+fn run_skill_action_loop(
     operation: SkillCommandOperation,
-    targets: Vec<SkillInstallTarget>,
+    plan: SkillCommandPlan,
     force: bool,
     project_root: &Path,
     home_dir_override: Option<&Path>,
 ) -> Result<(), CliError> {
-    let selected_scopes: Vec<SkillScope> = targets.iter().map(|target| target.scope).collect();
+    let selected_scopes: Vec<SkillScope> = plan
+        .install_targets
+        .iter()
+        .map(|target| target.scope)
+        .chain(plan.uninstall_targets.iter().map(|target| target.scope))
+        .collect();
     let home_dir = resolve_home_dir(&selected_scopes, project_root, home_dir_override)?;
 
-    let mut outputs = Vec::with_capacity(targets.len());
-    for target in targets {
-        let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
-        let result = install_skill(&plan, SkillInstallOptions { force })
-            .map_err(|_| operation.write_failed_error())?;
+    let mut actions = Vec::<SkillAction>::with_capacity(
+        plan.install_targets.len() + plan.uninstall_targets.len(),
+    );
+    actions.extend(
+        plan.install_targets
+            .into_iter()
+            .map(SkillAction::InstallOrUpdate),
+    );
+    actions.extend(
+        plan.uninstall_targets
+            .into_iter()
+            .map(SkillAction::Uninstall),
+    );
 
-        if result.status == SkillInstallStatus::BlockedManualEdit {
-            return Err(operation.blocked_manual_edit_error());
+    let mut outputs = Vec::<SkillActionOutput>::with_capacity(actions.len());
+    for action in actions {
+        match action {
+            SkillAction::InstallOrUpdate(target) => {
+                let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
+                let result = install_skill(&plan, SkillInstallOptions { force })
+                    .map_err(|_| operation.write_failed_error())?;
+
+                if result.status == SkillInstallStatus::BlockedManualEdit {
+                    return Err(operation.blocked_manual_edit_error());
+                }
+
+                outputs.push(SkillActionOutput {
+                    tool: target.tool.slug(),
+                    scope: target.scope.slug(),
+                    status: result.status.slug(),
+                    target_path: result.path.display().to_string(),
+                });
+            }
+            SkillAction::Uninstall(target) => {
+                let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
+                let result = uninstall_skill(&plan, SkillInstallOptions { force })
+                    .map_err(|_| operation.delete_failed_error())?;
+
+                if result.status == SkillUninstallStatus::BlockedManualEdit {
+                    return Err(operation.delete_blocked_manual_edit_error());
+                }
+
+                outputs.push(SkillActionOutput {
+                    tool: target.tool.slug(),
+                    scope: target.scope.slug(),
+                    status: result.status.slug(),
+                    target_path: result.path.display().to_string(),
+                });
+            }
         }
-
-        outputs.push(SkillInstallOutput {
-            tool: target.tool.slug(),
-            scope: target.scope.slug(),
-            status: result.status.slug(),
-            target_path: result.path.display().to_string(),
-        });
     }
 
     for output in outputs {
@@ -535,6 +665,7 @@ mod tests {
         InstallTargetSelector, InteractiveSelectionError, InteractiveTargetOption,
         SkillInstallTarget,
     };
+    use crate::skill_installer::render_managed_skill_content;
     use crate::skills::{SkillScope, SupportedTool};
 
     struct FakeSelector {
@@ -712,6 +843,148 @@ mod tests {
 
         let preserved = std::fs::read_to_string(target).expect("manual file should stay intact");
         assert_eq!(preserved, manual_content);
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_unchecked_managed_target_is_deleted() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let global_target = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(global_target.parent().expect("global parent"))
+            .expect("create global parent");
+        std::fs::write(&global_target, render_managed_skill_content())
+            .expect("seed global managed skill");
+
+        let project_target = project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(project_target.parent().expect("project parent"))
+            .expect("create project parent");
+        std::fs::write(&project_target, render_managed_skill_content())
+            .expect("seed project managed skill");
+
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Pi,
+            SkillScope::ProjectLocal,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(result.is_ok());
+        assert!(project_target.exists(), "selected target should remain installed");
+        assert!(
+            !global_target.exists(),
+            "unchecked managed target should be deleted"
+        );
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_unchecked_manual_target_blocks_delete_without_force() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let global_target = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(global_target.parent().expect("global parent"))
+            .expect("create global parent");
+        std::fs::write(&global_target, "# manual skill\n")
+            .expect("seed global manual skill");
+
+        let project_target = project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(project_target.parent().expect("project parent"))
+            .expect("create project parent");
+        std::fs::write(&project_target, render_managed_skill_content())
+            .expect("seed project managed skill");
+
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Pi,
+            SkillScope::ProjectLocal,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(matches!(
+            result,
+            Err(CliError::SkillInstallDeleteBlockedManualEdit)
+        ));
+        assert!(global_target.exists(), "manual unchecked target should remain");
+        assert!(project_target.exists(), "selected target should remain installed");
+    }
+
+    #[test]
+    fn skill_install_cli_interactive_alias_selection_does_not_delete_shared_path() {
+        let project = tempfile::tempdir().expect("project tempdir");
+        let home = tempfile::tempdir().expect("home tempdir");
+
+        let shared_global_target = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md");
+        std::fs::create_dir_all(shared_global_target.parent().expect("global parent"))
+            .expect("create global parent");
+        std::fs::write(&shared_global_target, render_managed_skill_content())
+            .expect("seed shared managed skill");
+
+        // Selecting Codex/global should keep the same shared path used by pi/global.
+        let selector = FakeSelector::from_result(Ok(vec![SkillInstallTarget::new(
+            SupportedTool::Codex,
+            SkillScope::Global,
+        )]));
+
+        let result = install_skill_command_with_selector_and_project_root(
+            &[],
+            &[],
+            false,
+            false,
+            true,
+            &selector,
+            project.path(),
+            Some(home.path()),
+        );
+
+        assert!(result.is_ok());
+        assert!(
+            shared_global_target.exists(),
+            "shared alias path should not be deleted when any alias remains selected"
+        );
     }
 
     #[test]

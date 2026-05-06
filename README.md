@@ -154,6 +154,13 @@ codex-image skill install
 
 Use `Space` to toggle tool/scope selections and `Enter` to confirm.
 
+Interactive selection behavior:
+- Already-installed targets are preselected.
+- Outdated managed installs are preselected and labeled `installed:outdated`.
+- Manual/tampered installs are preselected and labeled `installed:protected`.
+- If you uncheck an installed managed target, `codex-image skill install` removes that `SKILL.md`.
+- Unchecking a manual/tampered target is blocked by default; use `--force` to allow removal.
+
 Deterministic agent/CI commands:
 
 ```bash

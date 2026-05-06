@@ -83,6 +83,10 @@ pub enum CliError {
     SkillInstallWriteFailed,
     #[error("skill install blocked by existing manual edit")]
     SkillInstallBlockedManualEdit,
+    #[error("skill install delete failed")]
+    SkillInstallDeleteFailed,
+    #[error("skill install delete blocked by existing manual edit")]
+    SkillInstallDeleteBlockedManualEdit,
     #[error("skill update write failed")]
     SkillUpdateWriteFailed,
     #[error("skill update blocked by existing manual edit")]
@@ -261,6 +265,20 @@ impl CliError {
                 message: "existing SKILL.md is manual or tampered",
                 recoverable: true,
                 hint: "Re-run with --force to overwrite the existing file.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::SkillInstallDeleteFailed => ErrorClassification {
+                code: "filesystem.skill_install_delete_failed",
+                message: "failed to remove existing SKILL.md",
+                recoverable: true,
+                hint: "Ensure target directories are writable and retry, or use --force for protected content.",
+                exit_code: ExitCode::Filesystem,
+            },
+            Self::SkillInstallDeleteBlockedManualEdit => ErrorClassification {
+                code: "filesystem.skill_install_delete_blocked_manual_edit",
+                message: "existing SKILL.md is manual or tampered",
+                recoverable: true,
+                hint: "Re-run with --force to remove the existing file.",
                 exit_code: ExitCode::Filesystem,
             },
             Self::SkillUpdateWriteFailed => ErrorClassification {

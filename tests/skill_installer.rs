@@ -2,8 +2,8 @@ use std::fs;
 
 use codex_image::skill_installer::{
     classify_skill_content, classify_skill_path, install_skill, managed_checksum, managed_marker_line,
-    render_managed_skill_content, render_skill_body, SkillContentClassification,
-    SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
+    render_managed_skill_content, render_skill_body, uninstall_skill, SkillContentClassification,
+    SkillInstallOptions, SkillInstallPlan, SkillInstallStatus, SkillUninstallStatus,
 };
 use codex_image::skills::{resolve_skill_path, SkillScope, SupportedTool};
 use tempfile::tempdir;
@@ -371,6 +371,79 @@ fn skill_installer_filesystem_force_overwrites_blocked_manual_or_tampered_conten
 
     let current = fs::read_to_string(plan.target_path()).expect("forced rewrite");
     assert_eq!(current, render_managed_skill_content());
+}
+
+#[test]
+fn skill_installer_filesystem_uninstall_deletes_managed_and_missing_is_noop() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Pi,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let missing = uninstall_skill(&plan, SkillInstallOptions::default()).expect("missing uninstall");
+    assert_eq!(missing.status, SkillUninstallStatus::AlreadyMissing);
+
+    let created = install_skill(&plan, SkillInstallOptions::default()).expect("install managed");
+    assert_eq!(created.status, SkillInstallStatus::Created);
+    assert!(plan.target_path().is_file());
+
+    let deleted = uninstall_skill(&plan, SkillInstallOptions::default()).expect("delete managed");
+    assert_eq!(deleted.status, SkillUninstallStatus::Deleted);
+    assert!(!plan.target_path().exists());
+}
+
+#[test]
+fn skill_installer_filesystem_uninstall_blocks_manual_or_tampered_without_force() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::OpenCode,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+
+    fs::write(plan.target_path(), "# manual skill\n").expect("seed manual skill");
+    let blocked_manual = uninstall_skill(&plan, SkillInstallOptions::default()).expect("manual blocked");
+    assert_eq!(blocked_manual.status, SkillUninstallStatus::BlockedManualEdit);
+    assert!(plan.target_path().exists());
+
+    let tampered = render_managed_skill_content().replacen(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in home desktop directories.",
+        1,
+    );
+    fs::write(plan.target_path(), tampered).expect("seed tampered managed skill");
+    let blocked_tampered = uninstall_skill(&plan, SkillInstallOptions::default()).expect("tampered blocked");
+    assert_eq!(blocked_tampered.status, SkillUninstallStatus::BlockedManualEdit);
+    assert!(plan.target_path().exists());
+}
+
+#[test]
+fn skill_installer_filesystem_uninstall_force_deletes_protected_content() {
+    let home = tempdir().expect("home tempdir");
+    let project = tempdir().expect("project tempdir");
+    let plan = SkillInstallPlan::build(
+        SupportedTool::Codex,
+        SkillScope::Global,
+        home.path(),
+        project.path(),
+    );
+
+    let parent = plan.target_path().parent().expect("parent directory");
+    fs::create_dir_all(parent).expect("create parent");
+    fs::write(plan.target_path(), "# manual skill\n").expect("seed manual content");
+
+    let result = uninstall_skill(&plan, SkillInstallOptions { force: true }).expect("forced delete");
+    assert_eq!(result.status, SkillUninstallStatus::ForcedDelete);
+    assert!(!plan.target_path().exists());
 }
 
 #[test]

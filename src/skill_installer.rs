@@ -130,6 +130,31 @@ pub struct SkillInstallResult {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillUninstallStatus {
+    Deleted,
+    AlreadyMissing,
+    BlockedManualEdit,
+    ForcedDelete,
+}
+
+impl SkillUninstallStatus {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Deleted => "deleted",
+            Self::AlreadyMissing => "already_missing",
+            Self::BlockedManualEdit => "blocked_manual_edit",
+            Self::ForcedDelete => "forced_delete",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillUninstallResult {
+    pub status: SkillUninstallStatus,
+    pub path: PathBuf,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SkillInstallError {
     #[error("failed to read existing skill file")]
@@ -175,6 +200,35 @@ pub fn install_skill(
     };
 
     Ok(SkillInstallResult {
+        status,
+        path: plan.target_path().to_path_buf(),
+    })
+}
+
+pub fn uninstall_skill(
+    plan: &SkillInstallPlan,
+    options: SkillInstallOptions,
+) -> Result<SkillUninstallResult, SkillInstallError> {
+    let classification = classify_skill_path(plan.target_path())?;
+
+    let status = match classification {
+        SkillContentClassification::Missing => SkillUninstallStatus::AlreadyMissing,
+        SkillContentClassification::ManagedCurrent | SkillContentClassification::ManagedOutdated => {
+            remove_skill_file(plan.target_path())?;
+            SkillUninstallStatus::Deleted
+        }
+        SkillContentClassification::ManualUnmanaged
+        | SkillContentClassification::ManagedTampered => {
+            if options.force {
+                remove_skill_file(plan.target_path())?;
+                SkillUninstallStatus::ForcedDelete
+            } else {
+                SkillUninstallStatus::BlockedManualEdit
+            }
+        }
+    };
+
+    Ok(SkillUninstallResult {
         status,
         path: plan.target_path().to_path_buf(),
     })
@@ -270,6 +324,14 @@ fn write_managed_skill_file(path: &Path, content: &str) -> Result<(), SkillInsta
         let _ = fs::remove_file(&tmp_file);
         SkillInstallError::RenameFailed
     })
+}
+
+fn remove_skill_file(path: &Path) -> Result<(), SkillInstallError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(SkillInstallError::WriteFailed),
+    }
 }
 
 fn split_managed_content(content: &str) -> Option<ParsedManagedContent> {
