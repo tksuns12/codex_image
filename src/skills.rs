@@ -9,6 +9,27 @@ pub enum SkillScope {
     ProjectLocal,
 }
 
+impl SkillScope {
+    pub const fn all() -> [Self; 2] {
+        [Self::Global, Self::ProjectLocal]
+    }
+
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::ProjectLocal => "project",
+        }
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "global" => Some(Self::Global),
+            "project" => Some(Self::ProjectLocal),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SupportedTool {
     Claude,
