@@ -49,6 +49,41 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         readme.contains("Release / Preflight") && readme.contains("Require pull requests"),
         "README must document release branch protection expectations"
     );
+
+    for required in [
+        "Claude",
+        "Claude Code",
+        "Codex",
+        "pi",
+        "OpenCode",
+        "claude-code",
+        "opencode",
+        "codex-image skill install",
+        "codex-image skill update",
+        "Space",
+        "Enter",
+        "--tool",
+        "--scope project",
+        "--scope global",
+        "--yes",
+        "--force",
+        "Agent auto-install prompt",
+        "codex-image update --dry-run",
+        "codex-image update --yes",
+        "--version v1.2.3",
+        "GitHub Release artifacts",
+        "Windows same-process replacement limitation",
+        "no live GitHub downloads",
+        "no live Codex generation",
+        "no credentials",
+        "no auth mutation",
+    ] {
+        assert!(
+            readme.contains(required),
+            "README must include final S06 marker: {required}"
+        );
+    }
+
     assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
@@ -109,6 +144,44 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         readme.contains("Release / Preflight") && readme.contains("pull request"),
         "Korean README must document release branch protection expectations"
     );
+
+    for required in [
+        "codex-image skill install",
+        "codex-image skill update",
+        "--tool",
+        "--scope project",
+        "--scope global",
+        "--yes",
+        "--force",
+        "codex-image update --dry-run",
+        "codex-image update --yes",
+        "--version v1.2.3",
+    ] {
+        assert!(
+            readme.contains(required),
+            "Korean README must include stable command marker: {required}"
+        );
+    }
+
+    assert!(
+        readme.contains("no live GitHub downloads")
+            || readme.contains("GitHub 다운로드를 라이브로 수행하지 않습니다"),
+        "Korean README must state no-live GitHub download verification"
+    );
+    assert!(
+        readme.contains("no live Codex generation")
+            || readme.contains("Codex 생성은 라이브로 수행하지 않습니다"),
+        "Korean README must state no-live Codex generation verification"
+    );
+    assert!(
+        readme.contains("no credentials") || readme.contains("자격 증명을 요구하지 않습니다"),
+        "Korean README must state no-credentials verification"
+    );
+    assert!(
+        readme.contains("no auth mutation") || readme.contains("인증 상태를 변경하지 않습니다"),
+        "Korean README must state no-auth-mutation verification"
+    );
+
     assert!(
         !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")

@@ -1,5 +1,5 @@
 #[test]
-fn skill_path_docs_readme_links_canonical_matrix_doc() {
+fn skill_path_docs_readme_links_command_usage_and_canonical_matrix_doc() {
     let readme = include_str!("../README.md");
 
     assert!(
@@ -7,8 +7,9 @@ fn skill_path_docs_readme_links_canonical_matrix_doc() {
         "README must link to docs/skill-paths.md"
     );
     assert!(
-        readme.contains("M002/S01 contract"),
-        "README must label the S01 support-matrix contract"
+        readme.contains("codex-image skill install --tool")
+            && readme.contains("codex-image skill update --tool"),
+        "README must link readers to concrete skill install/update command usage"
     );
 }
 
@@ -65,19 +66,19 @@ fn skill_path_docs_explicitly_documents_codex_agents_choice() {
 }
 
 #[test]
-fn skill_path_docs_states_scope_and_prompt_guide_requirement() {
+fn skill_path_docs_states_contract_consumers_and_prompt_guide_requirement() {
     let doc = include_str!("../docs/skill-paths.md");
     let readme = include_str!("../README.md");
     let prompt_guide =
         "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide";
 
     assert!(
-        doc.contains("S01 establishes and tests this path contract only."),
-        "skill path doc must state S01 is contract-only"
+        doc.contains("consumed by `codex-image skill install` and `codex-image skill update`"),
+        "skill path doc must state install/update commands consume this path contract"
     );
     assert!(
-        doc.contains("File-writing commands and installer UX are delivered in later slices."),
-        "skill path doc must state install/write commands land later"
+        !doc.contains("File-writing commands and installer UX are delivered in later slices."),
+        "skill path doc must reject stale future-tense wording about install/write commands"
     );
     assert!(
         doc.contains(prompt_guide),
