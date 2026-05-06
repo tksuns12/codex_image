@@ -1,7 +1,5 @@
 # codex-image
 
-[![Release](https://github.com/tksuns12/codex_image/actions/workflows/release.yml/badge.svg?branch=release)](https://github.com/tksuns12/codex_image/actions/workflows/release.yml)
-
 [English](README.md)
 
 `codex-image`는 설치된 Codex CLI에 이미지 생성을 맡기는 작은 CLI입니다. Codex의 내장 이미지 도구로 이미지를 생성한 뒤, 결과 파일을 지정한 출력 디렉터리로 복사하고 매니페스트를 작성합니다.
@@ -68,9 +66,14 @@ cargo install --path . --force
 codex-image --help
 ```
 
-## 사전 요구 사항: Codex CLI
+## 사전 요구 사항: Codex CLI / Codex 확장
 
-`codex-image generate`는 정상 동작하는 Codex 설치가 필요합니다. Codex 실행 파일은 다음 순서로 찾습니다.
+`codex-image generate`는 정상 동작하는 Codex 설치가 필요합니다.
+
+- standalone Codex CLI는 현재 **macOS 전용**입니다.
+- VS Code/Cursor Codex 확장으로 설치된 Codex도 지원하며 `codex-image generate`에 그대로 사용할 수 있습니다.
+
+Codex 실행 파일은 다음 순서로 찾습니다.
 
 1. `CODEX_IMAGE_CODEX_BIN`이 설정되어 있으면 그 값을 사용합니다.
 2. `PATH`에 있는 `codex`를 사용합니다.
@@ -216,25 +219,6 @@ Windows same-process replacement limitation 이 있으므로, Windows에서는 `
 - `CODEX_IMAGE_CODEX_BIN`은 선택 사항이며, Codex 실행 파일 경로를 지정합니다.
 
 URL 기반 환경 변수는 지원하지 않습니다. 별도의 인증/API 동작도 없습니다.
-
-## 릴리스 워크플로
-
-릴리스는 `release` 브랜치에서만 생성됩니다.
-
-릴리스 워크플로는 release-please를 사용해 Conventional Commit 메시지로 SemVer를 결정합니다.
-
-- `fix:`는 패치 릴리스를 만듭니다.
-- `feat:`는 마이너 릴리스를 만듭니다.
-- `feat!:`, `fix!:` 또는 `!`가 붙은 breaking-change 커밋은 메이저 릴리스를 만듭니다.
-
-`release` 브랜치 보호 권장 설정:
-
-- 병합 전 pull request를 요구합니다.
-- `Release / Preflight` 상태 체크를 요구합니다.
-- 병합 전 브랜치 최신화를 요구합니다.
-- 저장소 정책이 허용하면 직접 push를 제한합니다.
-
-`release` 브랜치 대상 pull request에서는 워크플로가 테스트와 clippy를 실행합니다. `release` 브랜치에 push되면 release-please가 릴리스 PR을 열거나 갱신합니다. 그 릴리스 PR이 병합되면 GitHub Release가 생성되고, 워크플로가 Linux, macOS, Windows용 아카이브를 빌드해 업로드합니다.
 
 ## 검증 스크립트
 

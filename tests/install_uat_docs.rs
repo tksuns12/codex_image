@@ -7,10 +7,6 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         "README must document local source install fallback"
     );
     assert!(
-        readme.contains("actions/workflows/release.yml/badge.svg?branch=release"),
-        "README must include release workflow badge scoped to release branch"
-    );
-    assert!(
         readme.contains("releases/download/${VERSION}/${ASSET}"),
         "README must document release artifact downloads as the primary install path"
     );
@@ -42,12 +38,13 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         "README must link to the Korean translation"
     );
     assert!(
-        readme.contains("release-please") && readme.contains("release` branch"),
-        "README must document release branch and semver automation"
+        readme.contains("Codex extensions")
+            || (readme.contains("VS Code") && readme.contains("Cursor")),
+        "README must mention Codex extension install locations as a prerequisite"
     );
     assert!(
-        readme.contains("Release / Preflight") && readme.contains("Require pull requests"),
-        "README must document release branch protection expectations"
+        readme.contains("macOS-only"),
+        "README must state that standalone Codex CLI support is macOS-only"
     );
 
     for required in [
@@ -85,11 +82,14 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
     }
 
     assert!(
-        !readme.contains("CODEX_IMAGE_API_BASE_URL")
+        !readme.contains("actions/workflows/release.yml/badge.svg?branch=release")
+            && !readme.contains("release-please")
+            && !readme.contains("Release / Preflight")
+            && !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
             && !readme.contains("status --json")
             && !readme.contains("codex-image login"),
-        "README must not document removed URL/auth surfaces"
+        "README must not document removed workflow/auth/url surfaces"
     );
 }
 
@@ -100,10 +100,6 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
     assert!(
         readme.contains("cargo install --path ."),
         "Korean README must document local source install fallback"
-    );
-    assert!(
-        readme.contains("actions/workflows/release.yml/badge.svg?branch=release"),
-        "Korean README must include release workflow badge scoped to release branch"
     );
     assert!(
         readme.contains("releases/download/${VERSION}/${ASSET}"),
@@ -137,12 +133,13 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         "Korean README must link back to the English README"
     );
     assert!(
-        readme.contains("release-please") && readme.contains("release` 브랜치"),
-        "Korean README must document release branch and semver automation"
+        readme.contains("Codex 확장")
+            || (readme.contains("VS Code") && readme.contains("Cursor")),
+        "Korean README must mention Codex extension install locations as a prerequisite"
     );
     assert!(
-        readme.contains("Release / Preflight") && readme.contains("pull request"),
-        "Korean README must document release branch protection expectations"
+        readme.contains("macOS 전용") || readme.contains("macOS"),
+        "Korean README must state that standalone Codex CLI support is macOS-only"
     );
 
     for required in [
@@ -164,30 +161,24 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
     }
 
     assert!(
-        readme.contains("no live GitHub downloads")
-            || readme.contains("GitHub 다운로드를 라이브로 수행하지 않습니다"),
-        "Korean README must state no-live GitHub download verification"
-    );
-    assert!(
-        readme.contains("no live Codex generation")
-            || readme.contains("Codex 생성은 라이브로 수행하지 않습니다"),
-        "Korean README must state no-live Codex generation verification"
-    );
-    assert!(
-        readme.contains("no credentials") || readme.contains("자격 증명을 요구하지 않습니다"),
-        "Korean README must state no-credentials verification"
-    );
-    assert!(
-        readme.contains("no auth mutation") || readme.contains("인증 상태를 변경하지 않습니다"),
-        "Korean README must state no-auth-mutation verification"
+        (readme.contains("no live GitHub downloads")
+            || readme.contains("GitHub 다운로드를 라이브로 수행하지 않습니다"))
+            && (readme.contains("no live Codex generation")
+                || readme.contains("Codex 생성은 라이브로 수행하지 않습니다"))
+            && (readme.contains("no credentials") || readme.contains("자격 증명을 요구하지 않습니다"))
+            && (readme.contains("no auth mutation") || readme.contains("인증 상태를 변경하지 않습니다")),
+        "Korean README must keep no-live verification statements"
     );
 
     assert!(
-        !readme.contains("CODEX_IMAGE_API_BASE_URL")
+        !readme.contains("actions/workflows/release.yml/badge.svg?branch=release")
+            && !readme.contains("release-please")
+            && !readme.contains("Release / Preflight")
+            && !readme.contains("CODEX_IMAGE_API_BASE_URL")
             && !readme.contains("CODEX_IMAGE_AUTH_BASE_URL")
             && !readme.contains("status --json")
             && !readme.contains("codex-image login"),
-        "Korean README must not document removed URL/auth surfaces"
+        "Korean README must not document removed workflow/auth/url surfaces"
     );
 }
 

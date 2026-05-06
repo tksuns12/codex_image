@@ -1,7 +1,5 @@
 # codex-image
 
-[![Release](https://github.com/tksuns12/codex_image/actions/workflows/release.yml/badge.svg?branch=release)](https://github.com/tksuns12/codex_image/actions/workflows/release.yml)
-
 [한국어](README.ko.md)
 
 `codex-image` is a small CLI that asks an installed Codex CLI to generate an image with Codex's built-in image tool, then copies the result into a requested output directory and writes a manifest.
@@ -68,9 +66,14 @@ cargo install --path . --force
 codex-image --help
 ```
 
-## Prerequisite: Codex CLI
+## Prerequisite: Codex CLI / Codex extensions
 
-`codex-image generate` depends on a working Codex installation. Resolution order:
+`codex-image generate` depends on a working Codex installation.
+
+- The standalone Codex CLI is currently **macOS-only**.
+- Codex installs provided by VS Code/Cursor extensions are also supported and work fine for `codex-image generate`.
+
+Executable resolution order:
 
 1. `CODEX_IMAGE_CODEX_BIN` when set.
 2. `codex` on `PATH`.
@@ -230,25 +233,6 @@ No-live verification posture for this repository:
 - `CODEX_IMAGE_CODEX_BIN` optionally points to the Codex executable.
 
 No URL base environment variables are supported. No separate auth/API behavior exists.
-
-## Release workflow
-
-Releases are cut from the `release` branch only.
-
-The release workflow uses release-please to decide SemVer from Conventional Commit messages:
-
-- `fix:` creates a patch release.
-- `feat:` creates a minor release.
-- `feat!:`, `fix!:`, or another `!` breaking-change commit creates a major release.
-
-Expected branch protection for `release`:
-
-- Require pull requests before merging.
-- Require the `Release / Preflight` status check.
-- Require branches to be up to date before merging.
-- Restrict direct pushes if the repository policy allows it.
-
-On pull requests into `release`, the workflow runs tests and clippy. On push to `release`, release-please either opens/updates a release PR or creates the GitHub Release when that release PR is merged. When a release is created, the workflow builds and uploads archives for Linux, macOS, and Windows.
 
 ## Verification scripts
 
