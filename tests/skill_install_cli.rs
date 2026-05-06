@@ -66,7 +66,11 @@ fn skill_install_cli_project_install_then_repeat_is_created_then_unchanged() {
     );
 
     let written = fs::read_to_string(&expected_path).expect("skill file should be written");
-    assert!(written.starts_with("<!-- codex-image:managed checksum="));
+    assert!(written.starts_with("---\n"));
+    assert!(
+        written.contains("\n<!-- codex-image:managed checksum="),
+        "managed marker should still be embedded for update classification"
+    );
 
     let mut second = Command::cargo_bin("codex-image").expect("binary exists");
     let second_output = second
@@ -151,7 +155,11 @@ fn skill_install_cli_blocks_manual_edit_by_default_and_force_overwrites() {
     assert_eq!(forced_json["status"], "forced_overwrite");
 
     let overwritten = fs::read_to_string(&target).expect("manual file should be overwritten");
-    assert!(overwritten.starts_with("<!-- codex-image:managed checksum="));
+    assert!(overwritten.starts_with("---\n"));
+    assert!(
+        overwritten.contains("\n<!-- codex-image:managed checksum="),
+        "managed marker should still be embedded for update classification"
+    );
     assert!(!overwritten.contains("Bearer not-for-output"));
 }
 

@@ -1,7 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use dialoguer::{theme::ColorfulTheme, MultiSelect};
 
+use crate::skill_installer::{classify_skill_path, SkillContentClassification};
 use crate::skills::{resolve_skill_path, SkillScope, SupportedTool};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,9 +34,45 @@ pub struct TargetSelection {
     pub missing_scopes: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InteractiveInstallState {
+    NotInstalled,
+    InstalledCurrent,
+    InstalledOutdated,
+    InstalledProtected,
+}
+
+impl InteractiveInstallState {
+    pub const fn is_installed(self) -> bool {
+        !matches!(self, Self::NotInstalled)
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NotInstalled => "not-installed",
+            Self::InstalledCurrent => "installed",
+            Self::InstalledOutdated => "installed:outdated",
+            Self::InstalledProtected => "installed:protected",
+        }
+    }
+
+    pub const fn from_classification(classification: SkillContentClassification) -> Self {
+        match classification {
+            SkillContentClassification::Missing => Self::NotInstalled,
+            SkillContentClassification::ManagedCurrent => Self::InstalledCurrent,
+            SkillContentClassification::ManagedOutdated => Self::InstalledOutdated,
+            SkillContentClassification::ManualUnmanaged
+            | SkillContentClassification::ManagedTampered => Self::InstalledProtected,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InteractiveTargetOption {
     pub target: SkillInstallTarget,
+    pub target_path: PathBuf,
+    pub install_state: InteractiveInstallState,
+    pub default_selected: bool,
     pub label: String,
 }
 
@@ -62,9 +99,14 @@ impl InstallTargetSelector for DialoguerTargetSelector {
         options: &[InteractiveTargetOption],
     ) -> Result<Vec<SkillInstallTarget>, InteractiveSelectionError> {
         let labels: Vec<&str> = options.iter().map(|option| option.label.as_str()).collect();
+        let defaults: Vec<bool> = options
+            .iter()
+            .map(|option| option.default_selected)
+            .collect();
         let selected = MultiSelect::with_theme(&ColorfulTheme::default())
             .with_prompt("Select install targets (Space to toggle, Enter to confirm)")
             .items(&labels)
+            .defaults(&defaults)
             .interact_opt()
             .map_err(|_| InteractiveSelectionError::PromptFailed)?;
 
@@ -105,15 +147,26 @@ pub fn interactive_target_options(
 ) -> Vec<InteractiveTargetOption> {
     all_selectable_targets()
         .into_iter()
-        .map(|target| InteractiveTargetOption {
-            label: format!(
-                "{} ({}) [{}] -> {}",
-                target.tool.display_name(),
-                target.tool.slug(),
-                target.scope.slug(),
-                resolve_skill_path(target.tool, target.scope, home_dir, project_root).display(),
-            ),
-            target,
+        .map(|target| {
+            let target_path = resolve_skill_path(target.tool, target.scope, home_dir, project_root);
+            let install_state = classify_skill_path(&target_path)
+                .map(InteractiveInstallState::from_classification)
+                .unwrap_or(InteractiveInstallState::InstalledProtected);
+
+            InteractiveTargetOption {
+                label: format!(
+                    "{} ({}) [{}] [{}] -> {}",
+                    target.tool.display_name(),
+                    target.tool.slug(),
+                    target.scope.slug(),
+                    install_state.label(),
+                    target_path.display(),
+                ),
+                target,
+                target_path,
+                default_selected: install_state.is_installed(),
+                install_state,
+            }
         })
         .collect()
 }

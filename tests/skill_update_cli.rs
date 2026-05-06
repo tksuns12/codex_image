@@ -89,6 +89,52 @@ fn skill_update_cli_project_update_missing_then_repeat_is_created_then_unchanged
 }
 
 #[test]
+fn skill_update_cli_migrates_legacy_marker_first_layout_to_frontmatter_first() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+    let target = project
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+
+    let body = render_skill_body();
+    let legacy_content = format!("{}\n{}", managed_marker_line(body), body);
+    fs::write(&target, legacy_content).expect("seed legacy managed content");
+
+    let mut update = Command::cargo_bin("codex-image").expect("binary exists");
+    let update_output = update
+        .current_dir(project.path())
+        .arg("skill")
+        .arg("update")
+        .arg("--tool")
+        .arg("pi")
+        .arg("--scope")
+        .arg("project")
+        .arg("--yes")
+        .env("HOME", home.path())
+        .output()
+        .expect("update runs");
+
+    assert!(
+        update_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&update_output.stderr)
+    );
+    assert!(update_output.stderr.is_empty());
+
+    let update_json = parse_json_line(update_output.stdout);
+    assert_eq!(update_json["status"], "updated");
+
+    let current = fs::read_to_string(&target).expect("updated target should be readable");
+    assert!(current.starts_with("---\n"));
+    assert_eq!(current, render_managed_skill_content());
+}
+
+#[test]
 fn skill_update_cli_updates_valid_outdated_managed_file_to_current_content() {
     let project = tempdir().expect("project tempdir");
     let home = tempdir().expect("home tempdir");

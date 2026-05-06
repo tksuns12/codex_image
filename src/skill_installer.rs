@@ -50,6 +50,19 @@ pub enum SkillContentClassification {
     ManagedTampered,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagedLayout {
+    LegacyPrefix,
+    Suffix,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedManagedContent {
+    checksum: String,
+    body: String,
+    layout: ManagedLayout,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillInstallPlan {
     tool: SupportedTool,
@@ -191,7 +204,9 @@ pub fn managed_marker_line(body: &str) -> String {
 
 pub fn render_managed_skill_content() -> String {
     let body = render_skill_body();
-    format!("{}\n{}", managed_marker_line(body), body)
+    let separator = if body.ends_with('\n') { "" } else { "\n" };
+
+    format!("{body}{separator}{}\n", managed_marker_line(body))
 }
 
 pub fn classify_skill_content(existing_content: Option<&str>) -> SkillContentClassification {
@@ -200,23 +215,31 @@ pub fn classify_skill_content(existing_content: Option<&str>) -> SkillContentCla
     };
 
     let expected_body = render_skill_body();
-    let Some((existing_checksum, existing_body)) = split_managed_content(existing_content) else {
+    let Some(parsed) = split_managed_content(existing_content) else {
         if has_codex_image_marker_prefix(existing_content) {
             return SkillContentClassification::ManagedTampered;
         }
         return SkillContentClassification::ManualUnmanaged;
     };
 
-    let computed = managed_checksum(existing_body);
-    if computed != existing_checksum {
+    let computed = managed_checksum(&parsed.body);
+    if computed != parsed.checksum {
         return SkillContentClassification::ManagedTampered;
     }
 
-    if existing_body == expected_body {
-        SkillContentClassification::ManagedCurrent
+    if parsed.body == expected_body {
+        match parsed.layout {
+            ManagedLayout::Suffix => SkillContentClassification::ManagedCurrent,
+            ManagedLayout::LegacyPrefix => SkillContentClassification::ManagedOutdated,
+        }
     } else {
         SkillContentClassification::ManagedOutdated
     }
+}
+
+pub fn classify_skill_path(path: &Path) -> Result<SkillContentClassification, SkillInstallError> {
+    let existing_content = read_existing_skill(path)?;
+    Ok(classify_skill_content(existing_content.as_deref()))
 }
 
 fn read_existing_skill(path: &Path) -> Result<Option<String>, SkillInstallError> {
@@ -249,16 +272,36 @@ fn write_managed_skill_file(path: &Path, content: &str) -> Result<(), SkillInsta
     })
 }
 
-fn split_managed_content(content: &str) -> Option<(&str, &str)> {
-    let (first_line, remainder_with_newline) = content.split_once('\n')?;
-
-    if !first_line.starts_with(MANAGED_MARKER_PREFIX)
-        || !first_line.ends_with(MANAGED_MARKER_SUFFIX)
-    {
-        return None;
+fn split_managed_content(content: &str) -> Option<ParsedManagedContent> {
+    // Legacy format (M002/S02-S04): marker first, then body.
+    if let Some((first_line, remainder_with_newline)) = content.split_once('\n') {
+        if let Some(checksum) = parse_managed_marker_line(first_line) {
+            return Some(ParsedManagedContent {
+                checksum: checksum.to_string(),
+                body: remainder_with_newline.to_string(),
+                layout: ManagedLayout::LegacyPrefix,
+            });
+        }
     }
 
-    let checksum = first_line
+    // Current format: body first, marker last so frontmatter starts at line 1.
+    let trimmed = content.trim_end_matches(['\n', '\r']);
+    let (body_prefix, last_line) = trimmed.rsplit_once('\n')?;
+    let checksum = parse_managed_marker_line(last_line)?;
+
+    // Body should retain a trailing newline for stable checksum compatibility.
+    let mut body = body_prefix.to_string();
+    body.push('\n');
+
+    Some(ParsedManagedContent {
+        checksum: checksum.to_string(),
+        body,
+        layout: ManagedLayout::Suffix,
+    })
+}
+
+fn parse_managed_marker_line(line: &str) -> Option<&str> {
+    let checksum = line
         .strip_prefix(MANAGED_MARKER_PREFIX)?
         .strip_suffix(MANAGED_MARKER_SUFFIX)?;
 
@@ -266,7 +309,7 @@ fn split_managed_content(content: &str) -> Option<(&str, &str)> {
         return None;
     }
 
-    Some((checksum, remainder_with_newline))
+    Some(checksum)
 }
 
 fn has_codex_image_marker_prefix(content: &str) -> bool {

@@ -1,7 +1,7 @@
 use std::fs;
 
 use codex_image::skill_installer::{
-    classify_skill_content, install_skill, managed_checksum, managed_marker_line,
+    classify_skill_content, classify_skill_path, install_skill, managed_checksum, managed_marker_line,
     render_managed_skill_content, render_skill_body, SkillContentClassification,
     SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
@@ -90,7 +90,14 @@ fn skill_installer_content_is_deterministic_bytes_and_checksum() {
 
     let body = render_skill_body();
     let expected_marker = managed_marker_line(body);
-    let actual_marker = first.lines().next().expect("marker line exists");
+
+    let first_line = first.lines().next().expect("first line exists");
+    assert_eq!(first_line, "---", "managed skill must start with frontmatter");
+
+    let actual_marker = first
+        .lines()
+        .last()
+        .expect("marker line exists at end of file");
     assert_eq!(actual_marker, expected_marker);
 
     let marker_checksum = actual_marker
@@ -98,6 +105,17 @@ fn skill_installer_content_is_deterministic_bytes_and_checksum() {
         .and_then(|value| value.strip_suffix(" -->"))
         .expect("marker must use stable checksum shape");
     assert_eq!(marker_checksum, managed_checksum(body));
+}
+
+#[test]
+fn skill_installer_content_treats_legacy_marker_first_layout_as_managed_outdated() {
+    let body = render_skill_body();
+    let legacy_layout = format!("{}\n{}", managed_marker_line(body), body);
+
+    assert_eq!(
+        classify_skill_content(Some(&legacy_layout)),
+        SkillContentClassification::ManagedOutdated
+    );
 }
 
 #[test]
@@ -144,6 +162,26 @@ fn skill_installer_content_classifies_malformed_managed_metadata_as_tampered() {
     assert_eq!(
         classify_skill_content(Some(&malformed)),
         SkillContentClassification::ManagedTampered
+    );
+}
+
+#[test]
+fn skill_installer_filesystem_classify_path_reports_missing_and_manual() {
+    let workspace = tempdir().expect("workspace tempdir");
+    let missing = workspace.path().join("missing").join("SKILL.md");
+
+    assert_eq!(
+        classify_skill_path(&missing).expect("missing should classify"),
+        SkillContentClassification::Missing
+    );
+
+    let manual = workspace.path().join("manual").join("SKILL.md");
+    fs::create_dir_all(manual.parent().expect("manual parent")).expect("create parent");
+    fs::write(&manual, "# custom skill\nnotes\n").expect("write manual file");
+
+    assert_eq!(
+        classify_skill_path(&manual).expect("manual should classify"),
+        SkillContentClassification::ManualUnmanaged
     );
 }
 

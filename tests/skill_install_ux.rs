@@ -2,8 +2,8 @@ use std::cell::RefCell;
 
 use codex_image::skill_install_ux::{
     all_selectable_targets, expand_selected_targets, interactive_target_options,
-    select_interactive_targets, InstallTargetSelector, InteractiveSelectionError,
-    InteractiveTargetOption, SkillInstallTarget, TargetSelectionState,
+    select_interactive_targets, InstallTargetSelector, InteractiveInstallState,
+    InteractiveSelectionError, InteractiveTargetOption, SkillInstallTarget, TargetSelectionState,
 };
 use codex_image::skills::{SkillScope, SupportedTool};
 
@@ -138,12 +138,19 @@ fn skill_install_ux_interactive_options_include_tool_scope_and_target_path_label
     let first = &options[0];
     assert_eq!(first.target.tool, SupportedTool::Claude);
     assert_eq!(first.target.scope, SkillScope::Global);
+    assert_eq!(first.install_state, InteractiveInstallState::NotInstalled);
+    assert!(!first.default_selected);
     assert!(first.label.contains("Claude"));
     assert!(first.label.contains("(claude)"));
     assert!(first.label.contains("[global]"));
-    assert!(
-        first.label.contains(home.path().to_string_lossy().as_ref()),
-        "label should include resolved global target path"
+    assert!(first.label.contains("[not-installed]"));
+    assert_eq!(
+        first.target_path,
+        home.path()
+            .join(".claude")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
     );
 
     let project_local_pi = options
@@ -155,12 +162,106 @@ fn skill_install_ux_interactive_options_include_tool_scope_and_target_path_label
         .expect("pi/project option exists");
     assert!(project_local_pi.label.contains("pi"));
     assert!(project_local_pi.label.contains("[project]"));
-    assert!(
-        project_local_pi
-            .label
-            .contains(project.path().to_string_lossy().as_ref()),
-        "label should include resolved project-local target path"
+    assert!(project_local_pi.label.contains("[not-installed]"));
+    assert_eq!(
+        project_local_pi.target_path,
+        project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("codex-image")
+            .join("SKILL.md")
     );
+}
+
+#[test]
+fn skill_install_ux_interactive_options_mark_installed_states_and_defaults() {
+    let project = tempfile::tempdir().expect("project tempdir");
+    let home = tempfile::tempdir().expect("home tempdir");
+
+    let claude_global_path = home
+        .path()
+        .join(".claude")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+    std::fs::create_dir_all(claude_global_path.parent().expect("parent")).expect("create parent");
+    std::fs::write(
+        &claude_global_path,
+        codex_image::skill_installer::render_managed_skill_content(),
+    )
+    .expect("seed managed current");
+
+    let codex_global_path = home
+        .path()
+        .join(".agents")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+    std::fs::create_dir_all(codex_global_path.parent().expect("parent")).expect("create parent");
+    let outdated_body = codex_image::skill_installer::render_skill_body()
+        .replace("## Guardrails", "## Guardrails (old)");
+    let outdated = format!(
+        "{}\n{}",
+        codex_image::skill_installer::managed_marker_line(&outdated_body),
+        outdated_body
+    );
+    std::fs::write(&codex_global_path, outdated).expect("seed managed outdated");
+
+    let claude_project_path = project
+        .path()
+        .join(".claude")
+        .join("skills")
+        .join("codex-image")
+        .join("SKILL.md");
+    std::fs::create_dir_all(claude_project_path.parent().expect("parent"))
+        .expect("create parent");
+    std::fs::write(&claude_project_path, "# manual custom skill\n")
+        .expect("seed manual protected");
+
+    let options = interactive_target_options(home.path(), project.path());
+
+    let claude_global = options
+        .iter()
+        .find(|option| {
+            option.target.tool == SupportedTool::Claude
+                && option.target.scope == SkillScope::Global
+        })
+        .expect("claude global option");
+    assert_eq!(
+        claude_global.install_state,
+        InteractiveInstallState::InstalledCurrent
+    );
+    assert!(claude_global.default_selected);
+    assert!(claude_global.label.contains("[installed]"));
+
+    let codex_global = options
+        .iter()
+        .find(|option| {
+            option.target.tool == SupportedTool::Codex
+                && option.target.scope == SkillScope::Global
+        })
+        .expect("codex global option");
+    assert_eq!(
+        codex_global.install_state,
+        InteractiveInstallState::InstalledOutdated
+    );
+    assert!(codex_global.default_selected);
+    assert!(codex_global.label.contains("[installed:outdated]"));
+
+    let claude_project = options
+        .iter()
+        .find(|option| {
+            option.target.tool == SupportedTool::Claude
+                && option.target.scope == SkillScope::ProjectLocal
+        })
+        .expect("claude project option");
+    assert_eq!(
+        claude_project.install_state,
+        InteractiveInstallState::InstalledProtected
+    );
+    assert!(claude_project.default_selected);
+    assert!(claude_project.label.contains("[installed:protected]"));
 }
 
 #[test]
@@ -173,10 +274,16 @@ fn skill_install_ux_prompt_boundary_allows_multiple_targets_via_fake_selector() 
     let options = vec![
         InteractiveTargetOption {
             target: SkillInstallTarget::new(SupportedTool::Pi, SkillScope::Global),
+            target_path: std::path::PathBuf::from("/tmp/pi-global/SKILL.md"),
+            install_state: InteractiveInstallState::NotInstalled,
+            default_selected: false,
             label: "pi global".to_string(),
         },
         InteractiveTargetOption {
             target: SkillInstallTarget::new(SupportedTool::OpenCode, SkillScope::ProjectLocal),
+            target_path: std::path::PathBuf::from("/tmp/opencode-project/SKILL.md"),
+            install_state: InteractiveInstallState::NotInstalled,
+            default_selected: false,
             label: "opencode project".to_string(),
         },
     ];
@@ -197,6 +304,9 @@ fn skill_install_ux_prompt_boundary_allows_multiple_targets_via_fake_selector() 
 fn skill_install_ux_prompt_boundary_surfaces_empty_and_cancel_errors() {
     let options = vec![InteractiveTargetOption {
         target: SkillInstallTarget::new(SupportedTool::Pi, SkillScope::ProjectLocal),
+        target_path: std::path::PathBuf::from("/tmp/pi-project/SKILL.md"),
+        install_state: InteractiveInstallState::NotInstalled,
+        default_selected: false,
         label: "pi project".to_string(),
     }];
 
