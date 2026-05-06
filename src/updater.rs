@@ -2,7 +2,7 @@ use std::env::consts;
 use std::fs::{self, File};
 use std::io::{copy, Cursor, Read};
 use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -178,33 +178,87 @@ impl BinaryInstaller for FilesystemBinaryInstaller {
     }
 }
 
+const DEFAULT_GITHUB_API_BASE: &str = "https://api.github.com";
+const DEFAULT_GITHUB_CONNECT_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS: u64 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GitHubClientTimeouts {
+    connect_timeout: Duration,
+    request_timeout: Duration,
+}
+
+impl GitHubClientTimeouts {
+    pub fn new(connect_timeout: Duration, request_timeout: Duration) -> Self {
+        Self {
+            connect_timeout,
+            request_timeout,
+        }
+    }
+
+    pub fn connect_timeout(&self) -> Duration {
+        self.connect_timeout
+    }
+
+    pub fn request_timeout(&self) -> Duration {
+        self.request_timeout
+    }
+}
+
+impl Default for GitHubClientTimeouts {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(DEFAULT_GITHUB_CONNECT_TIMEOUT_SECS),
+            request_timeout: Duration::from_secs(DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS),
+        }
+    }
+}
+
 pub struct GitHubReleaseClient {
     client: reqwest::blocking::Client,
     repository: String,
     api_base: String,
+    timeouts: GitHubClientTimeouts,
 }
 
 impl GitHubReleaseClient {
     pub fn new(repository: impl Into<String>) -> Result<Self, UpdateError> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("codex-image-updater")
-            .build()
-            .map_err(|_| UpdateError::ReleaseLookupFailed)?;
-
-        Ok(Self {
-            client,
-            repository: repository.into(),
-            api_base: "https://api.github.com".to_string(),
-        })
+        Self::with_api_base_and_timeouts(
+            repository,
+            DEFAULT_GITHUB_API_BASE,
+            GitHubClientTimeouts::default(),
+        )
     }
 
     pub fn with_api_base(
         repository: impl Into<String>,
         api_base: impl Into<String>,
     ) -> Result<Self, UpdateError> {
-        let mut client = Self::new(repository)?;
-        client.api_base = api_base.into();
-        Ok(client)
+        Self::with_api_base_and_timeouts(repository, api_base, GitHubClientTimeouts::default())
+    }
+
+    pub fn with_api_base_and_timeouts(
+        repository: impl Into<String>,
+        api_base: impl Into<String>,
+        timeouts: GitHubClientTimeouts,
+    ) -> Result<Self, UpdateError> {
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("codex-image-updater")
+            .connect_timeout(timeouts.connect_timeout)
+            .timeout(timeouts.request_timeout)
+            .build()
+            .map_err(|_| UpdateError::ReleaseLookupFailed)?;
+
+        Ok(Self {
+            client,
+            repository: repository.into(),
+            api_base: api_base.into(),
+            timeouts,
+        })
+    }
+
+    pub fn timeouts(&self) -> GitHubClientTimeouts {
+        self.timeouts
     }
 
     fn release_url(&self, requested_version: Option<&str>) -> String {
@@ -291,6 +345,8 @@ pub enum UpdateError {
     ConfirmationRequired,
     #[error("current executable path is unavailable")]
     CurrentExecutableUnavailable,
+    #[error("binary replacement is unsupported on this platform")]
+    ReplacementUnsupported,
     #[error("binary replacement failed")]
     ReplacementFailed,
 }
@@ -331,6 +387,14 @@ pub fn platform_from_parts(os: &str, arch: &str) -> Result<Platform, UpdateError
         }),
         _ => Err(UpdateError::UnsupportedPlatform),
     }
+}
+
+pub fn replacement_supported_for_os(os: &str) -> bool {
+    os != "windows"
+}
+
+pub fn replacement_supported_for_current_os() -> bool {
+    replacement_supported_for_os(consts::OS)
 }
 
 pub fn release_asset_name_for_tag(tag_name: &str, platform: &Platform) -> String {
@@ -429,6 +493,10 @@ pub fn run_update_with_installer<S: UpdateSource, I: BinaryInstaller>(
         return Ok(update_result(options, &artifact, "validated"));
     }
 
+    if !replacement_supported_for_current_os() {
+        return Err(UpdateError::ReplacementUnsupported);
+    }
+
     let extracted_binary = extract_binary_bytes(&archive_bytes, artifact.archive_kind, &validated)?;
 
     installer.replace_binary(&options.current_executable, &extracted_binary)?;
@@ -524,7 +592,10 @@ fn extract_from_tar_gz(bytes: &[u8], validated_binary_path: &Path) -> Result<Vec
     Err(UpdateError::ArchiveMissingRequiredFile)
 }
 
-fn extract_from_zip(bytes: &[u8], validated_binary_archive_path: &str) -> Result<Vec<u8>, UpdateError> {
+fn extract_from_zip(
+    bytes: &[u8],
+    validated_binary_archive_path: &str,
+) -> Result<Vec<u8>, UpdateError> {
     let reader = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|_| UpdateError::ArchiveInvalid)?;
 

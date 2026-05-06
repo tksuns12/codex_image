@@ -1,12 +1,16 @@
 use std::collections::VecDeque;
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use codex_image::updater::{
-    current_platform, parse_release_metadata, release_asset_name_for_tag, resolve_artifact,
-    run_update, run_update_with_installer, validate_archive_bytes, ArchiveKind, BinaryInstaller,
-    Platform, UpdateError, UpdateOptions, UpdateResult, UpdateSource,
+    current_platform, parse_release_metadata, release_asset_name_for_tag,
+    replacement_supported_for_os, resolve_artifact, run_update, run_update_with_installer,
+    validate_archive_bytes, ArchiveKind, BinaryInstaller, GitHubClientTimeouts,
+    GitHubReleaseClient, Platform, UpdateError, UpdateOptions, UpdateResult, UpdateSource,
 };
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -110,6 +114,59 @@ fn duplicate_target_asset_returns_typed_error() {
 fn malformed_release_json_returns_typed_error() {
     let err = parse_release_metadata("{not valid json").expect_err("must fail");
     assert!(matches!(err, UpdateError::ReleaseMetadataInvalid));
+}
+
+#[test]
+fn github_client_uses_default_timeouts_when_not_overridden() {
+    let client = GitHubReleaseClient::with_api_base("acme/codex-image", "http://127.0.0.1")
+        .expect("client should build");
+
+    assert_eq!(client.timeouts(), GitHubClientTimeouts::default());
+}
+
+#[test]
+fn github_release_lookup_timeout_maps_to_typed_error() {
+    let (base_url, handle) = spawn_hanging_http_server();
+    let client = GitHubReleaseClient::with_api_base_and_timeouts(
+        "acme/codex-image",
+        &base_url,
+        GitHubClientTimeouts::new(Duration::from_millis(50), Duration::from_millis(50)),
+    )
+    .expect("client should build");
+
+    let err = client
+        .fetch_release(None)
+        .expect_err("lookup should timeout");
+    assert!(matches!(err, UpdateError::ReleaseLookupFailed));
+
+    handle.join().expect("server thread should join");
+}
+
+#[test]
+fn github_asset_download_timeout_maps_to_typed_error() {
+    let (base_url, handle) = spawn_hanging_http_server();
+    let client = GitHubReleaseClient::with_api_base_and_timeouts(
+        "acme/codex-image",
+        &base_url,
+        GitHubClientTimeouts::new(Duration::from_millis(50), Duration::from_millis(50)),
+    )
+    .expect("client should build");
+
+    let temp = tempdir().expect("tempdir");
+    let destination = temp.path().join("asset.zip");
+    let err = client
+        .download_asset_to_path(&format!("{base_url}/asset.zip"), &destination)
+        .expect_err("download should timeout");
+    assert!(matches!(err, UpdateError::AssetDownloadFailed));
+
+    handle.join().expect("server thread should join");
+}
+
+#[test]
+fn replacement_policy_disables_confirmed_replacement_on_windows() {
+    assert!(!replacement_supported_for_os("windows"));
+    assert!(replacement_supported_for_os("linux"));
+    assert!(replacement_supported_for_os("macos"));
 }
 
 #[test]
@@ -675,6 +732,20 @@ impl UpdateSource for FakeSource {
             Err(err) => Err(err),
         }
     }
+}
+
+fn spawn_hanging_http_server() -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind hanging server");
+    let addr = listener.local_addr().expect("local addr");
+
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept one connection");
+        let mut request_buffer = [0_u8; 1024];
+        let _ = stream.read(&mut request_buffer);
+        thread::sleep(Duration::from_millis(200));
+    });
+
+    (format!("http://{addr}"), handle)
 }
 
 fn release_fixture() -> &'static str {

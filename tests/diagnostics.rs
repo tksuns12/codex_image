@@ -343,6 +343,11 @@ fn diagnostics_binary_update_errors_map_to_stable_codes_without_leaks() {
             "response_contract.update_archive_invalid",
         ),
         (
+            UpdateError::ReplacementUnsupported,
+            ExitCode::Filesystem,
+            "filesystem.update_replacement_unsupported",
+        ),
+        (
             UpdateError::ReplacementFailed,
             ExitCode::Filesystem,
             "filesystem.update_replacement_failed",
@@ -362,6 +367,33 @@ fn diagnostics_binary_update_errors_map_to_stable_codes_without_leaks() {
         assert!(!rendered.contains("Bearer"));
         assert!(!rendered.contains("HOME"));
     }
+}
+
+#[test]
+fn diagnostics_windows_replacement_policy_error_is_redacted_and_actionable() {
+    let err = CliError::BinaryUpdate(UpdateError::ReplacementUnsupported);
+
+    assert_eq!(err.exit_code(), ExitCode::Filesystem);
+
+    let json = parse_envelope(&err);
+    assert_eq!(
+        json["error"]["code"],
+        "filesystem.update_replacement_unsupported"
+    );
+    assert_eq!(
+        json["error"]["message"],
+        "binary replacement is unsupported on this platform"
+    );
+    assert_eq!(json["error"]["recoverable"], true);
+    assert_eq!(
+        json["error"]["hint"],
+        "Use --dry-run to validate the release archive, then replace the binary manually from the extracted artifact."
+    );
+
+    let rendered = serde_json::to_string(&json).expect("json serializes");
+    assert!(!rendered.contains("https://"));
+    assert!(!rendered.contains("/tmp/"));
+    assert!(!rendered.contains("HOME"));
 }
 
 #[test]
@@ -427,6 +459,7 @@ fn diagnostics_all_error_envelopes_keep_exact_machine_readable_shape() {
         CliError::BinaryUpdate(UpdateError::ReleaseLookupFailed),
         CliError::BinaryUpdate(UpdateError::AssetDownloadFailed),
         CliError::BinaryUpdate(UpdateError::ArchiveInvalid),
+        CliError::BinaryUpdate(UpdateError::ReplacementUnsupported),
         CliError::BinaryUpdate(UpdateError::ReplacementFailed),
         CliError::Unknown,
     ];

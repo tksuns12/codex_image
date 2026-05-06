@@ -340,6 +340,13 @@ fn classify_binary_update_error(error: &UpdateError) -> ErrorClassification {
             hint: "Retry with a different version; if it persists, report the release artifact issue.",
             exit_code: ExitCode::ResponseContract,
         },
+        UpdateError::ReplacementUnsupported => ErrorClassification {
+            code: "filesystem.update_replacement_unsupported",
+            message: "binary replacement is unsupported on this platform",
+            recoverable: true,
+            hint: "Use --dry-run to validate the release archive, then replace the binary manually from the extracted artifact.",
+            exit_code: ExitCode::Filesystem,
+        },
         UpdateError::ReplacementFailed => ErrorClassification {
             code: "filesystem.update_replacement_failed",
             message: "failed to replace the current binary",
