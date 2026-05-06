@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::config::ConfigError;
+use crate::updater::UpdateError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitCode {
@@ -86,6 +87,8 @@ pub enum CliError {
     SkillUpdateWriteFailed,
     #[error("skill update blocked by existing manual edit")]
     SkillUpdateBlockedManualEdit,
+    #[error("binary update failed")]
+    BinaryUpdate(#[from] UpdateError),
     #[error("unexpected failure")]
     Unknown,
 }
@@ -274,6 +277,7 @@ impl CliError {
                 hint: "Re-run with --force to overwrite the existing file.",
                 exit_code: ExitCode::Filesystem,
             },
+            Self::BinaryUpdate(source) => classify_binary_update_error(source),
             Self::Unknown => ErrorClassification {
                 code: "unknown",
                 message: "unexpected failure",
@@ -282,6 +286,67 @@ impl CliError {
                 exit_code: ExitCode::Unknown,
             },
         }
+    }
+}
+
+fn classify_binary_update_error(error: &UpdateError) -> ErrorClassification {
+    match error {
+        UpdateError::UnsupportedPlatform => ErrorClassification {
+            code: "usage.update_unsupported_platform",
+            message: "binary update is unavailable on this platform",
+            recoverable: false,
+            hint: "Use a supported release target: linux/x86_64, macos/x86_64, macos/aarch64, windows/x86_64.",
+            exit_code: ExitCode::UsageOrConfig,
+        },
+        UpdateError::ConfirmationRequired => ErrorClassification {
+            code: "usage.update_confirmation_required",
+            message: "binary update requires --yes confirmation",
+            recoverable: true,
+            hint: "Re-run with --yes, or use --dry-run to validate without replacement.",
+            exit_code: ExitCode::UsageOrConfig,
+        },
+        UpdateError::CurrentExecutableUnavailable => ErrorClassification {
+            code: "config.update_current_executable_unavailable",
+            message: "current executable path is unavailable",
+            recoverable: true,
+            hint: "Run from an installed binary path and retry.",
+            exit_code: ExitCode::UsageOrConfig,
+        },
+        UpdateError::ReleaseLookupFailed => ErrorClassification {
+            code: "api.update_release_lookup_failed",
+            message: "failed to resolve release metadata",
+            recoverable: true,
+            hint: "Retry later or verify GitHub release availability.",
+            exit_code: ExitCode::Api,
+        },
+        UpdateError::AssetDownloadFailed => ErrorClassification {
+            code: "api.update_asset_download_failed",
+            message: "failed to download release archive",
+            recoverable: true,
+            hint: "Retry later or verify network access to GitHub release assets.",
+            exit_code: ExitCode::Api,
+        },
+        UpdateError::ReleaseMetadataInvalid
+        | UpdateError::MissingReleaseAsset
+        | UpdateError::DuplicateReleaseAsset
+        | UpdateError::ArchiveInvalid
+        | UpdateError::ArchivePathTraversal
+        | UpdateError::ArchiveTopLevelDirectoryMismatch
+        | UpdateError::ArchiveMissingRequiredFile
+        | UpdateError::ArchiveDuplicateBinary => ErrorClassification {
+            code: "response_contract.update_archive_invalid",
+            message: "release archive did not match expected contract",
+            recoverable: false,
+            hint: "Retry with a different version; if it persists, report the release artifact issue.",
+            exit_code: ExitCode::ResponseContract,
+        },
+        UpdateError::ReplacementFailed => ErrorClassification {
+            code: "filesystem.update_replacement_failed",
+            message: "failed to replace the current binary",
+            recoverable: true,
+            hint: "Ensure the current binary path is writable and retry.",
+            exit_code: ExitCode::Filesystem,
+        },
     }
 }
 

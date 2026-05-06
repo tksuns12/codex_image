@@ -16,8 +16,10 @@ use crate::skill_installer::{
     install_skill, SkillInstallOptions, SkillInstallPlan, SkillInstallStatus,
 };
 use crate::skills::{SkillScope, SupportedTool};
+use crate::updater::{GitHubReleaseClient, UpdateOptions, UpdateResult, run_update};
 
 const GPT_IMAGE_MODEL: &str = "gpt-image-2";
+const UPDATE_REPOSITORY: &str = "tksuns12/codex_image";
 
 #[derive(Debug, Parser)]
 #[command(name = "codex-image", version, about = "Codex Image CLI")]
@@ -35,6 +37,18 @@ enum Commands {
         /// Output directory where generated image files and manifest.json are written.
         #[arg(long, value_name = "DIR")]
         out: PathBuf,
+    },
+    /// Update codex-image from GitHub Release archives for the current platform.
+    Update {
+        /// Required confirmation before replacing the current binary.
+        #[arg(long)]
+        yes: bool,
+        /// Resolve, download, and validate archive contents without replacing the current binary.
+        #[arg(long)]
+        dry_run: bool,
+        /// Optional GitHub Release tag (for example: v1.2.3). Defaults to latest when omitted.
+        #[arg(long = "version", value_name = "TAG", value_parser = parse_release_tag)]
+        version: Option<String>,
     },
     /// Manage codex-image native skill installation paths.
     Skill {
@@ -216,6 +230,11 @@ pub async fn run() -> i32 {
 async fn dispatch(cli: Cli) -> Result<(), CliError> {
     match cli.command {
         Commands::Generate { prompt, out } => generate(prompt, out).await,
+        Commands::Update {
+            yes,
+            dry_run,
+            version,
+        } => update(yes, dry_run, version),
         Commands::Skill { command } => dispatch_skill(command),
     }
 }
@@ -232,6 +251,43 @@ async fn generate(prompt: String, out: PathBuf) -> Result<(), CliError> {
     println!("{line}");
 
     Ok(())
+}
+
+fn update(yes: bool, dry_run: bool, version: Option<String>) -> Result<(), CliError> {
+    let client = GitHubReleaseClient::new(UPDATE_REPOSITORY)?;
+    let current_executable = std::env::current_exe().map_err(|_| CliError::ProjectRootUnavailable)?;
+    let options = UpdateOptions {
+        current_executable,
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+        requested_version: version,
+        dry_run,
+        confirm: yes,
+    };
+
+    let result = run_update(&client, &options)?;
+    print_update_result(&result)
+}
+
+fn print_update_result(result: &UpdateResult) -> Result<(), CliError> {
+    let line = serde_json::to_string(result).map_err(|_| CliError::OutputWriteFailed)?;
+    println!("{line}");
+    Ok(())
+}
+
+fn parse_release_tag(value: &str) -> Result<String, String> {
+    if !value.starts_with('v') {
+        return Err("version tag must start with 'v' (example: v1.2.3)".to_string());
+    }
+
+    let mut components = value[1..].split('.');
+    let valid = components.clone().count() == 3
+        && components.all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()));
+
+    if !valid {
+        return Err("version tag must be semantic (example: v1.2.3)".to_string());
+    }
+
+    Ok(value.to_string())
 }
 
 fn dispatch_skill(command: SkillCommands) -> Result<(), CliError> {
