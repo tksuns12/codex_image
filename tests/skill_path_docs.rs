@@ -68,7 +68,7 @@ fn skill_path_docs_explicitly_documents_codex_agents_choice() {
 #[test]
 fn skill_path_docs_states_contract_consumers_and_prompt_guide_requirement() {
     let doc = include_str!("../docs/skill-paths.md");
-    let readme = include_str!("../README.md");
+    let advanced_reference = include_str!("../docs/advanced-reference.md");
     let prompt_guide =
         "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide";
 
@@ -85,7 +85,7 @@ fn skill_path_docs_states_contract_consumers_and_prompt_guide_requirement() {
         "skill path doc must include the required prompting guide link"
     );
     assert!(
-        readme.contains(prompt_guide),
-        "README must include the required prompting guide link"
+        advanced_reference.contains(prompt_guide),
+        "advanced reference must include the required prompting guide link"
     );
 }

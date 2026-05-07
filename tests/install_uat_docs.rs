@@ -62,32 +62,14 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
             "CODEX_IMAGE_CODEX_BIN",
             "README.ko.md",
             "macOS-only",
-            "Claude",
-            "Claude Code",
-            "Codex",
-            "pi",
-            "OpenCode",
-            "claude-code",
-            "opencode",
-            "codex-image skill install",
-            "codex-image skill update",
-            "Space",
-            "Enter",
-            "--tool",
-            "--scope project",
-            "--scope global",
-            "--yes",
-            "--force",
-            "Agent auto-install prompt",
+            "codex-image skill install --tool",
+            "codex-image skill update --tool",
             "codex-image update --dry-run",
             "codex-image update --yes",
             "--version v1.2.3",
-            "GitHub Release artifacts",
-            "Windows same-process replacement limitation",
-            "no live GitHub downloads",
-            "no live Codex generation",
-            "no credentials",
-            "no auth mutation",
+            "docs/advanced-reference.md",
+            "docs/skill-paths.md",
+            "docs/uat-live-smoke.md",
         ],
     );
 
@@ -114,11 +96,10 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
             "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
             "image-0001.<format>",
             "manifest.json",
-            "## Agent skill install/update guide",
+            "## Post-first-run references (optional)",
             "codex-image skill install --tool",
             "codex-image update --dry-run",
             "docs/uat-live-smoke.md",
-            "## Verification scripts",
         ],
     );
 
@@ -179,16 +160,15 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
     );
 
     let secondary_markers = [
-        "## Agent skill install/update guide",
+        "## Post-first-run references (optional)",
+        "docs/advanced-reference.md",
         "docs/skill-paths.md",
         "codex-image skill install --tool",
         "codex-image skill update --tool",
         "codex-image update --dry-run",
         "codex-image update --yes",
         "--version v1.2.3",
-        "GitHub Release artifacts",
         "docs/uat-live-smoke.md",
-        "## Verification scripts",
     ];
 
     assert_secondary_markers_after_first_success(
@@ -202,6 +182,8 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         label,
         readme,
         &[
+            "## Agent skill install/update guide",
+            "## Verification scripts",
             "actions/workflows/release.yml/badge.svg?branch=release",
             "release-please",
             "Release / Preflight",
