@@ -67,6 +67,9 @@ fn skill_update_cli_project_update_missing_then_repeat_is_created_then_unchanged
         Some(expected_path.to_string_lossy().as_ref())
     );
 
+    let managed = fs::read_to_string(&expected_path).expect("skill file should be written");
+    assert_eq!(managed, render_managed_skill_content());
+
     let mut second = Command::cargo_bin("codex-image").expect("binary exists");
     let second_output = second
         .current_dir(project.path())
@@ -86,6 +89,10 @@ fn skill_update_cli_project_update_missing_then_repeat_is_created_then_unchanged
 
     let second_json = parse_json_line(second_output.stdout);
     assert_eq!(second_json["status"], "unchanged");
+    assert_eq!(
+        fs::read_to_string(&expected_path).expect("skill file should remain readable"),
+        render_managed_skill_content()
+    );
 }
 
 #[test]
@@ -147,7 +154,11 @@ fn skill_update_cli_updates_valid_outdated_managed_file_to_current_content() {
 
     fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
 
-    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (old)");
+    let outdated_body = render_skill_body().replacen(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in local working directories.",
+        1,
+    );
     let outdated_content = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
     fs::write(&target, outdated_content).expect("seed outdated managed content");
 
@@ -341,6 +352,16 @@ fn skill_update_cli_multi_target_repeated_flags_dedupes_and_orders_global_then_p
 
     assert!(expected_global.is_file());
     assert!(expected_project.is_file());
+
+    let expected_content = render_managed_skill_content();
+    assert_eq!(
+        fs::read_to_string(&expected_global).expect("global skill should be readable"),
+        expected_content
+    );
+    assert_eq!(
+        fs::read_to_string(&expected_project).expect("project skill should be readable"),
+        expected_content
+    );
 }
 
 #[test]
