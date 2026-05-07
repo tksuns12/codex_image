@@ -7,39 +7,7 @@ use crate::skills::{resolve_skill_path, SkillScope, SupportedTool};
 const MANAGED_MARKER_PREFIX: &str = "<!-- codex-image:managed checksum=";
 const MANAGED_MARKER_SUFFIX: &str = " -->";
 
-const SKILL_BODY: &str = r#"---
-name: codex-image
-description: Reusable prompt workflow for deterministic codex-image generation tasks.
----
-
-# codex-image skill
-
-Use this skill when you need a reproducible image-generation workflow through the `codex-image` CLI.
-
-## Command guidance
-
-- `codex-image generate "<prompt>" --out <dir>`
-- `codex-image skill install --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes`
-- `codex-image skill update --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes`
-
-## Supported tools
-
-- claude
-- claude-code
-- codex
-- pi
-- opencode
-
-## Prompting guide
-
-- https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide
-
-## Guardrails
-
-- Keep prompts explicit about subject, composition, lighting, and style.
-- Keep outputs in project-controlled directories.
-- Avoid adding secrets or credentials to prompts or generated artifacts.
-"#;
+const SKILL_BODY: &str = include_str!("templates/codex-image-skill.md");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillContentClassification {
