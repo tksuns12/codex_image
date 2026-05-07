@@ -98,6 +98,12 @@ Use this posture when you want contract confidence without external side effects
 - no credentials
 - no auth mutation
 
+Local install contract check (no live generation):
+
+```bash
+bash scripts/verify-local-install.sh
+```
+
 ### Live smoke verification (intentional Codex-backed run)
 
 Use this only when you explicitly want a real Codex image generation smoke test:

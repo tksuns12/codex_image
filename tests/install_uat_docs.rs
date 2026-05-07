@@ -62,11 +62,6 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
             "CODEX_IMAGE_CODEX_BIN",
             "README.ko.md",
             "macOS-only",
-            "codex-image skill install --tool",
-            "codex-image skill update --tool",
-            "codex-image update --dry-run",
-            "codex-image update --yes",
-            "--version v1.2.3",
             "docs/advanced-reference.md",
             "docs/skill-paths.md",
             "docs/uat-live-smoke.md",
@@ -98,7 +93,12 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
             "manifest.json",
             "## Post-first-run references (optional)",
             "codex-image skill install --tool",
+            "codex-image skill update --tool",
             "codex-image update --dry-run",
+            "codex-image update --yes",
+            "--version v1.2.3",
+            "docs/advanced-reference.md",
+            "docs/skill-paths.md",
             "docs/uat-live-smoke.md",
         ],
     );
@@ -184,6 +184,60 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         &[
             "## Agent skill install/update guide",
             "## Verification scripts",
+            "actions/workflows/release.yml/badge.svg?branch=release",
+            "release-please",
+            "Release / Preflight",
+            "CODEX_IMAGE_API_BASE_URL",
+            "CODEX_IMAGE_AUTH_BASE_URL",
+            "status --json",
+            "codex-image login",
+        ],
+    );
+}
+
+#[test]
+fn install_uat_docs_advanced_reference_covers_post_first_run_operations() {
+    let label = "Advanced reference";
+    let advanced_reference = include_str!("../docs/advanced-reference.md");
+
+    assert_all_present(
+        label,
+        advanced_reference,
+        &[
+            "Space",
+            "Enter",
+            "installed:outdated",
+            "installed:protected",
+            "--force",
+            "codex-image skill install --tool codex --tool pi --scope project --yes",
+            "codex-image skill update --tool codex --scope project --yes",
+            "line-delimited JSON rows",
+            "tool",
+            "scope",
+            "status",
+            "target_path",
+            "Do not mutate authentication state",
+            "codex-image update --dry-run",
+            "codex-image update --yes",
+            "codex-image update --version v1.2.3 --yes",
+            "GitHub Release artifacts",
+            "Windows same-process replacement limitation",
+            "no live GitHub downloads",
+            "no live Codex generation",
+            "no credentials",
+            "no auth mutation",
+            "scripts/uat-live-smoke.sh",
+            "scripts/verify-local-install.sh",
+            "docs/skill-paths.md",
+            "docs/uat-live-smoke.md",
+            "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide",
+        ],
+    );
+
+    assert_all_absent(
+        label,
+        advanced_reference,
+        &[
             "actions/workflows/release.yml/badge.svg?branch=release",
             "release-please",
             "Release / Preflight",

@@ -67,6 +67,7 @@ fn skill_path_docs_explicitly_documents_codex_agents_choice() {
 
 #[test]
 fn skill_path_docs_states_contract_consumers_and_prompt_guide_requirement() {
+    let readme = include_str!("../README.md");
     let doc = include_str!("../docs/skill-paths.md");
     let advanced_reference = include_str!("../docs/advanced-reference.md");
     let prompt_guide =
@@ -81,8 +82,8 @@ fn skill_path_docs_states_contract_consumers_and_prompt_guide_requirement() {
         "skill path doc must reject stale future-tense wording about install/write commands"
     );
     assert!(
-        doc.contains(prompt_guide),
-        "skill path doc must include the required prompting guide link"
+        !readme.contains(prompt_guide),
+        "README should keep quickstart scope and avoid embedding the advanced prompting guide"
     );
     assert!(
         advanced_reference.contains(prompt_guide),
