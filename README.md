@@ -34,7 +34,7 @@ Download and run the installer script for your platform. Each script resolves th
 #### Linux x86_64 / macOS x86_64 / macOS arm64
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tksuns12/codex-image/release/scripts/install-latest.sh | sh
 ```
 
 The script installs to `${HOME}/.local/bin` by default. Override with `CODEX_IMAGE_INSTALL_DIR=/path/to/bin` and make sure the install directory is on your `PATH`.
@@ -42,7 +42,7 @@ The script installs to `${HOME}/.local/bin` by default. Override with `CODEX_IMA
 #### Windows x86_64 PowerShell
 
 ```powershell
-Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression
+Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex-image/release/scripts/install-latest.ps1 | Invoke-Expression
 ```
 
 The script installs to `$HOME\bin` by default. Override with `$env:CODEX_IMAGE_INSTALL_DIR = "C:\path\to\bin"` before running it and make sure the install directory is on your `PATH`.
@@ -112,8 +112,8 @@ Fast command reference:
 codex-image skill install --tool codex --scope project --yes
 codex-image skill update --tool codex --scope project --yes
 codex-image update --dry-run
-codex-image update --yes
-codex-image update --version v1.2.3 --yes
+codex-image update
+codex-image update --version v1.2.3
 ```
 
-Keep using explicit `--tool` and `--scope` values for automation. Use `codex-image update --dry-run` before replacement when you want a non-mutating preview.
+Keep using explicit `--tool` and `--scope` values for skill automation. Use `codex-image update --dry-run` before replacement when you want a non-mutating preview.
