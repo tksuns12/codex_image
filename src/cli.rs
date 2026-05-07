@@ -43,9 +43,9 @@ enum Commands {
         #[arg(long, value_name = "DIR")]
         out: PathBuf,
     },
-    /// Update codex-image from GitHub Release archives for the current platform.
+    /// Update codex-image to the latest GitHub Release archive for the current platform.
     Update {
-        /// Required confirmation before replacing the current binary.
+        /// Accepted for compatibility; updates replace the current binary by default.
         #[arg(long)]
         yes: bool,
         /// Resolve, download, and validate archive contents without replacing the current binary.
@@ -292,25 +292,47 @@ pub fn execute_update_command<S: UpdateSource, I: BinaryInstaller>(
     dry_run: bool,
     version: Option<String>,
 ) -> Result<UpdateResult, CliError> {
-    if !dry_run && !yes {
-        return Err(crate::updater::UpdateError::ConfirmationRequired.into());
-    }
-
     let options = UpdateOptions {
         current_executable,
         current_version,
         requested_version: version,
         dry_run,
-        confirm: yes,
+        confirm: yes || !dry_run,
     };
 
     run_update_with_installer(source, &options, installer).map_err(Into::into)
 }
 
 fn print_update_result(result: &UpdateResult) -> Result<(), CliError> {
-    let line = serde_json::to_string(result).map_err(|_| CliError::OutputWriteFailed)?;
-    println!("{line}");
+    println!("{}", format_update_result(result));
     Ok(())
+}
+
+fn format_update_result(result: &UpdateResult) -> String {
+    match result.status.as_str() {
+        "validated" => format!(
+            "codex-image update validated {target_version} for {target}\nasset: {asset}\nbinary: {binary_path}",
+            target_version = result.target_version,
+            target = result.target,
+            asset = result.asset,
+            binary_path = result.binary_path,
+        ),
+        "updated" => format!(
+            "codex-image updated from {current_version} to {target_version}\ntarget: {target}\nasset: {asset}\nbinary: {binary_path}",
+            current_version = result.current_version,
+            target_version = result.target_version,
+            target = result.target,
+            asset = result.asset,
+            binary_path = result.binary_path,
+        ),
+        other => format!(
+            "codex-image update {other}\ntarget version: {target_version}\ntarget: {target}\nasset: {asset}\nbinary: {binary_path}",
+            target_version = result.target_version,
+            target = result.target,
+            asset = result.asset,
+            binary_path = result.binary_path,
+        ),
+    }
 }
 
 fn parse_release_tag(value: &str) -> Result<String, String> {
@@ -581,7 +603,8 @@ fn run_skill_action_loop(
     for action in actions {
         match action {
             SkillAction::InstallOrUpdate(target) => {
-                let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
+                let plan =
+                    SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
                 let result = install_skill(&plan, SkillInstallOptions { force })
                     .map_err(|_| operation.write_failed_error())?;
 
@@ -597,7 +620,8 @@ fn run_skill_action_loop(
                 });
             }
             SkillAction::Uninstall(target) => {
-                let plan = SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
+                let plan =
+                    SkillInstallPlan::build(target.tool, target.scope, &home_dir, project_root);
                 let result = uninstall_skill(&plan, SkillInstallOptions { force })
                     .map_err(|_| operation.delete_failed_error())?;
 
@@ -659,7 +683,10 @@ fn read_home_dir() -> Option<PathBuf> {
 mod tests {
     use std::cell::RefCell;
 
-    use super::{install_skill_command_with_selector_and_project_root, ScopeArg, ToolArg};
+    use super::{
+        format_update_result, install_skill_command_with_selector_and_project_root, ScopeArg,
+        ToolArg,
+    };
     use crate::diagnostics::CliError;
     use crate::skill_install_ux::{
         InstallTargetSelector, InteractiveSelectionError, InteractiveTargetOption,
@@ -667,6 +694,7 @@ mod tests {
     };
     use crate::skill_installer::render_managed_skill_content;
     use crate::skills::{SkillScope, SupportedTool};
+    use crate::updater::UpdateResult;
 
     struct FakeSelector {
         result: Result<Vec<SkillInstallTarget>, InteractiveSelectionError>,
@@ -694,6 +722,41 @@ mod tests {
             *self.calls.borrow_mut() += 1;
             self.result.clone()
         }
+    }
+
+    #[test]
+    fn update_result_renderer_uses_human_text_for_success() {
+        let output = format_update_result(&UpdateResult {
+            status: "updated".to_string(),
+            current_version: "0.1.0".to_string(),
+            target_version: "v1.2.3".to_string(),
+            target: "x86_64-unknown-linux-gnu".to_string(),
+            asset: "codex-image-v1.2.3-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+            binary_path: "/tmp/codex-image".to_string(),
+        });
+
+        assert!(output.contains("codex-image updated from 0.1.0 to v1.2.3"));
+        assert!(output.contains("target: x86_64-unknown-linux-gnu"));
+        assert!(output.contains("asset: codex-image-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"));
+        assert!(output.contains("binary: /tmp/codex-image"));
+        assert!(!output.trim_start().starts_with('{'));
+    }
+
+    #[test]
+    fn update_result_renderer_uses_human_text_for_dry_run() {
+        let output = format_update_result(&UpdateResult {
+            status: "validated".to_string(),
+            current_version: "0.1.0".to_string(),
+            target_version: "v1.2.3".to_string(),
+            target: "x86_64-apple-darwin".to_string(),
+            asset: "codex-image-v1.2.3-x86_64-apple-darwin.tar.gz".to_string(),
+            binary_path: "/usr/local/bin/codex-image".to_string(),
+        });
+
+        assert!(output.contains("codex-image update validated v1.2.3 for x86_64-apple-darwin"));
+        assert!(output.contains("asset: codex-image-v1.2.3-x86_64-apple-darwin.tar.gz"));
+        assert!(output.contains("binary: /usr/local/bin/codex-image"));
+        assert!(!output.trim_start().starts_with('{'));
     }
 
     #[test]
@@ -889,7 +952,10 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        assert!(project_target.exists(), "selected target should remain installed");
+        assert!(
+            project_target.exists(),
+            "selected target should remain installed"
+        );
         assert!(
             !global_target.exists(),
             "unchecked managed target should be deleted"
@@ -909,8 +975,7 @@ mod tests {
             .join("SKILL.md");
         std::fs::create_dir_all(global_target.parent().expect("global parent"))
             .expect("create global parent");
-        std::fs::write(&global_target, "# manual skill\n")
-            .expect("seed global manual skill");
+        std::fs::write(&global_target, "# manual skill\n").expect("seed global manual skill");
 
         let project_target = project
             .path()
@@ -943,8 +1008,14 @@ mod tests {
             result,
             Err(CliError::SkillInstallDeleteBlockedManualEdit)
         ));
-        assert!(global_target.exists(), "manual unchecked target should remain");
-        assert!(project_target.exists(), "selected target should remain installed");
+        assert!(
+            global_target.exists(),
+            "manual unchecked target should remain"
+        );
+        assert!(
+            project_target.exists(),
+            "selected target should remain installed"
+        );
     }
 
     #[test]

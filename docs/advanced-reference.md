@@ -78,12 +78,12 @@ Optionally run codex-image update --dry-run before any binary replacement.
 
 ## Binary update behavior
 
-`codex-image update` uses GitHub Release artifacts and supports dry-run selection, non-interactive apply, and explicit version pinning.
+`codex-image update` uses GitHub Release artifacts and supports latest-by-default apply, dry-run validation, and explicit version pinning.
 
 ```bash
 codex-image update --dry-run
-codex-image update --yes
-codex-image update --version v1.2.3 --yes
+codex-image update
+codex-image update --version v1.2.3
 ```
 
 Windows same-process replacement limitation: on Windows, do not assume in-process overwrite; prefer `codex-image update --dry-run` followed by manual replacement guidance.

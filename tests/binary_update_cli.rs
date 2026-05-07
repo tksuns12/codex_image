@@ -13,49 +13,45 @@ use codex_image::updater::{
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use predicates::prelude::*;
-use serde_json::Value;
 use tar::Builder;
 use tempfile::tempdir;
 use zip::write::FileOptions;
 
-fn parse_json_line(bytes: Vec<u8>) -> Value {
-    let text = String::from_utf8(bytes).expect("output should be utf-8");
-    let trimmed = text.trim_end();
-    assert_eq!(trimmed.lines().count(), 1, "output must be one JSON line");
-    serde_json::from_str(trimmed).expect("output should be valid json")
-}
-
 #[test]
-fn update_cli_missing_yes_fails_before_network_with_redacted_json_envelope() {
-    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
-    let output = cmd.arg("update").output().expect("update command runs");
+fn update_cli_helper_no_flags_updates_latest_release_by_default() {
+    let source = FakeSource::new()
+        .with_release_result(Ok(
+            parse_release_metadata(release_fixture()).expect("release fixture")
+        ))
+        .with_download_result(Ok(download_archive_fixture()));
+    let installer = RecordingInstaller::default();
 
-    assert_eq!(output.status.code(), Some(2));
-    assert!(
-        output.stdout.is_empty(),
-        "stdout should stay empty on failure"
-    );
+    let temp = tempdir().expect("tempdir");
+    let binary_path = temp.path().join(current_binary_name());
+    std::fs::write(&binary_path, b"old-binary").expect("seed binary");
 
-    let envelope = parse_json_line(output.stderr);
-    assert_eq!(
-        envelope["error"]["code"],
-        "usage.update_confirmation_required"
-    );
-    assert_eq!(
-        envelope["error"]["message"],
-        "binary update requires --yes confirmation"
-    );
-    assert_eq!(envelope["error"]["recoverable"], true);
-    assert_eq!(
-        envelope["error"]["hint"],
-        "Re-run with --yes, or use --dry-run to validate without replacement."
-    );
+    let result = execute_update_command(
+        &source,
+        &installer,
+        binary_path,
+        env!("CARGO_PKG_VERSION").to_string(),
+        false,
+        false,
+        None,
+    )
+    .expect("no-flag update should install latest release");
 
-    let rendered = serde_json::to_string(&envelope).expect("json serializes");
-    assert!(!rendered.contains("https://"));
-    assert!(!rendered.contains("Bearer"));
-    assert!(!rendered.contains("HOME="));
-    assert!(!rendered.contains("/tmp/"));
+    assert_eq!(result.status, "updated");
+    assert_eq!(result.target_version, "v1.2.3");
+    assert_eq!(source.last_requested_version(), None);
+    assert_eq!(source.download_calls(), 1);
+    assert_eq!(installer.calls(), 1, "no-flag update must replace binary");
+    assert_eq!(
+        installer
+            .last_bytes()
+            .expect("installer should capture replacement payload"),
+        expected_updated_binary_bytes().to_vec()
+    );
 }
 
 #[test]

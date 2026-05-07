@@ -71,7 +71,7 @@ fn cli_help_update_help_documents_release_archive_flags_and_version_tag() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("GitHub Release archives"))
+        .stdout(predicate::str::contains("latest GitHub Release"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains("--dry-run"))
         .stdout(
