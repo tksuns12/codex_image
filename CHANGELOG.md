@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/tksuns12/codex-image/compare/v0.2.1...v0.3.0) (2026-05-07)
+
+
+### Features
+
+* Expanded the managed codex-image skill template into a compact Op… ([62307a5](https://github.com/tksuns12/codex-image/commit/62307a5dd397ec3a73d15e806fb50471b7511106))
+* Moved managed codex-image skill prose into a checked-in compile-t… ([3a1cde6](https://github.com/tksuns12/codex-image/commit/3a1cde68772c2af6169eb2f10a2693c4d6ec4dc0))
+
+
+### Bug Fixes
+
+* **release:** use canonical repository URLs ([75c7970](https://github.com/tksuns12/codex-image/commit/75c797024718855b38deb85a9f780fdbfe5d9c54))
+
 ## [0.2.1](https://github.com/tksuns12/codex-image/compare/v0.2.0...v0.2.1) (2026-05-07)
 
 
