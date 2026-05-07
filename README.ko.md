@@ -6,6 +6,21 @@
 
 이 도구는 자체 OpenAI OAuth 흐름을 구현하지 않습니다. URL로 설정하는 이미지 API 엔드포인트를 호출하지 않습니다. Codex 인증 파일을 읽거나 변경하지도 않습니다. 로그인과 이미지 생성 권한은 Codex가 직접 소유합니다.
 
+## 사전 요구 사항: Codex CLI / Codex 확장
+
+`codex-image generate`는 정상 동작하는 Codex 설치가 필요합니다.
+
+- standalone Codex CLI는 현재 **macOS 전용**입니다.
+- VS Code/Cursor Codex 확장으로 설치된 Codex도 지원하며 `codex-image generate`에 그대로 사용할 수 있습니다.
+
+Codex 실행 파일은 다음 순서로 찾습니다.
+
+1. `CODEX_IMAGE_CODEX_BIN`이 설정되어 있으면 그 값을 사용합니다.
+2. `PATH`에 있는 `codex`를 사용합니다.
+3. VS Code/Cursor 확장에서 흔히 쓰이는 Codex 설치 위치를 확인합니다.
+
+Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구를 사용할 수 있어야 합니다.
+
 ## 설치
 
 ### 릴리스 아티팩트로 설치
@@ -65,21 +80,6 @@ codex-image --help
 cargo install --path . --force
 codex-image --help
 ```
-
-## 사전 요구 사항: Codex CLI / Codex 확장
-
-`codex-image generate`는 정상 동작하는 Codex 설치가 필요합니다.
-
-- standalone Codex CLI는 현재 **macOS 전용**입니다.
-- VS Code/Cursor Codex 확장으로 설치된 Codex도 지원하며 `codex-image generate`에 그대로 사용할 수 있습니다.
-
-Codex 실행 파일은 다음 순서로 찾습니다.
-
-1. `CODEX_IMAGE_CODEX_BIN`이 설정되어 있으면 그 값을 사용합니다.
-2. `PATH`에 있는 `codex`를 사용합니다.
-3. VS Code/Cursor 확장에서 흔히 쓰이는 Codex 설치 위치를 확인합니다.
-
-Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구를 사용할 수 있어야 합니다.
 
 ## 이미지와 매니페스트 생성
 

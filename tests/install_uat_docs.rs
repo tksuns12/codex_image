@@ -29,6 +29,19 @@ fn assert_all_absent(label: &str, doc: &str, banned: &[&str]) {
     }
 }
 
+fn assert_secondary_markers_after_first_success(
+    label: &str,
+    doc: &str,
+    first_success_markers: &[&str],
+    secondary_markers: &[&str],
+) {
+    for first_success_marker in first_success_markers {
+        for secondary_marker in secondary_markers {
+            assert_before(label, doc, first_success_marker, secondary_marker);
+        }
+    }
+}
+
 #[test]
 fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
     let label = "README";
@@ -165,16 +178,25 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         "manifest.json",
     );
 
-    for advanced_marker in [
+    let secondary_markers = [
         "## Agent skill install/update guide",
+        "docs/skill-paths.md",
         "codex-image skill install --tool",
+        "codex-image skill update --tool",
         "codex-image update --dry-run",
+        "codex-image update --yes",
+        "--version v1.2.3",
+        "GitHub Release artifacts",
         "docs/uat-live-smoke.md",
         "## Verification scripts",
-    ] {
-        assert_before(label, readme, "image-0001.<format>", advanced_marker);
-        assert_before(label, readme, "manifest.json", advanced_marker);
-    }
+    ];
+
+    assert_secondary_markers_after_first_success(
+        label,
+        readme,
+        &["image-0001.<format>", "manifest.json"],
+        &secondary_markers,
+    );
 
     assert_all_absent(
         label,
@@ -210,9 +232,8 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
             "generate",
             "CODEX_IMAGE_CODEX_BIN",
             "README.md",
-            "codex-image skill install",
-            "codex-image skill update",
-            "--tool",
+            "Space",
+            "Enter",
             "--scope project",
             "--scope global",
             "--yes",
@@ -220,6 +241,8 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
             "codex-image update --dry-run",
             "codex-image update --yes",
             "--version v1.2.3",
+            "GitHub Release artifacts",
+            "docs/uat-live-smoke.md",
         ],
     );
 
@@ -236,6 +259,105 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         readme.contains("macOS 전용") || readme.contains("macOS"),
         "{label} must state that standalone Codex CLI support is macOS-only"
     );
+
+    assert_all_present(
+        label,
+        readme,
+        &[
+            "`codex-image`는 설치된 Codex CLI에 이미지 생성을 맡기는 작은 CLI입니다.",
+            "## 사전 요구 사항: Codex CLI / Codex 확장",
+            "standalone Codex CLI는 현재 **macOS 전용**입니다.",
+            "Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구를 사용할 수 있어야 합니다.",
+            "## 설치",
+            "## 이미지와 매니페스트 생성",
+            "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+            "image-0001.<format>",
+            "manifest.json",
+            "## 에이전트 스킬 설치/업데이트 가이드",
+            "docs/skill-paths.md",
+            "codex-image skill install --tool",
+            "codex-image skill update --tool",
+            "## 환경 변수",
+            "## 검증 스크립트",
+        ],
+    );
+
+    assert_before(
+        label,
+        readme,
+        "`codex-image`는 설치된 Codex CLI에 이미지 생성을 맡기는 작은 CLI입니다.",
+        "## 사전 요구 사항: Codex CLI / Codex 확장",
+    );
+    assert_before(
+        label,
+        readme,
+        "## 사전 요구 사항: Codex CLI / Codex 확장",
+        "## 설치",
+    );
+    assert_before(
+        label,
+        readme,
+        "## 설치",
+        "## 이미지와 매니페스트 생성",
+    );
+    assert_before(
+        label,
+        readme,
+        "standalone Codex CLI는 현재 **macOS 전용**입니다.",
+        "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구를 사용할 수 있어야 합니다.",
+        "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "CODEX_IMAGE_CODEX_BIN",
+        "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+        "image-0001.<format>",
+    );
+    assert_before(
+        label,
+        readme,
+        "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
+        "manifest.json",
+    );
+
+    let secondary_markers = [
+        "## 에이전트 스킬 설치/업데이트 가이드",
+        "docs/skill-paths.md",
+        "codex-image skill install --tool",
+        "codex-image skill update --tool",
+        "codex-image update --dry-run",
+        "codex-image update --yes",
+        "--version v1.2.3",
+        "GitHub Release artifacts",
+        "docs/uat-live-smoke.md",
+        "## 검증 스크립트",
+    ];
+
+    assert_secondary_markers_after_first_success(
+        label,
+        readme,
+        &["image-0001.<format>", "manifest.json"],
+        &secondary_markers,
+    );
+
+    assert_before(
+        label,
+        readme,
+        "## 에이전트 스킬 설치/업데이트 가이드",
+        "## 환경 변수",
+    );
+    assert_before(label, readme, "## 환경 변수", "## 검증 스크립트");
 
     assert!(
         (readme.contains("no live GitHub downloads")
