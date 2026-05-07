@@ -29,52 +29,23 @@ Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구
 
 ### 릴리스 아티팩트로 설치
 
-최신 GitHub Release에서 플랫폼에 맞는 아카이브를 내려받거나, 아래 스니펫을 사용하세요. `v0.1.0`은 설치하려는 릴리스 태그로 바꿔야 합니다.
+플랫폼에 맞는 설치 스크립트를 내려받아 실행하세요. 각 스크립트는 최신 GitHub Release 태그를 자동으로 확인하고, 맞는 아카이브를 내려받아 바이너리를 설치한 뒤 `codex-image --help`로 확인합니다.
 
 #### Linux x86_64 / macOS x86_64 / macOS arm64
 
 ```bash
-REPO="tksuns12/codex_image"
-VERSION="v0.1.0"
-
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
-  Darwin-x86_64) TARGET="x86_64-apple-darwin" ;;
-  Darwin-arm64|Darwin-aarch64) TARGET="aarch64-apple-darwin" ;;
-  *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
-esac
-
-ASSET="codex-image-${VERSION}-${TARGET}.tar.gz"
-TMPDIR="$(mktemp -d)"
-curl -L "https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}" -o "${TMPDIR}/${ASSET}"
-tar -xzf "${TMPDIR}/${ASSET}" -C "${TMPDIR}"
-mkdir -p "${HOME}/.local/bin"
-install -m 0755 "${TMPDIR}/codex-image-${VERSION}-${TARGET}/codex-image" "${HOME}/.local/bin/codex-image"
-
-codex-image --help
+curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh
 ```
 
-`${HOME}/.local/bin`이 `PATH`에 포함되어 있어야 합니다.
+기본 설치 위치는 `${HOME}/.local/bin`입니다. `CODEX_IMAGE_INSTALL_DIR=/path/to/bin`으로 바꿀 수 있으며, 설치 디렉터리가 `PATH`에 포함되어 있어야 합니다.
 
 #### Windows x86_64 PowerShell
 
 ```powershell
-$Repo = "tksuns12/codex_image"
-$Version = "v0.1.0"
-$Target = "x86_64-pc-windows-msvc"
-$Asset = "codex-image-$Version-$Target.zip"
-$TempDir = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "codex-image-install")
-$ZipPath = Join-Path $TempDir $Asset
-
-Invoke-WebRequest "https://github.com/$Repo/releases/download/$Version/$Asset" -OutFile $ZipPath
-Expand-Archive -Path $ZipPath -DestinationPath $TempDir -Force
-New-Item -ItemType Directory -Force -Path "$HOME\bin" | Out-Null
-Copy-Item "$TempDir\codex-image-$Version-$Target\codex-image.exe" "$HOME\bin\codex-image.exe" -Force
-
-codex-image --help
+Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression
 ```
 
-`$HOME\bin`이 `PATH`에 포함되어 있어야 합니다.
+기본 설치 위치는 `$HOME\bin`입니다. 실행 전에 `$env:CODEX_IMAGE_INSTALL_DIR = "C:\path\to\bin"`으로 바꿀 수 있으며, 설치 디렉터리가 `PATH`에 포함되어 있어야 합니다.
 
 ### 소스에서 설치 (보조 경로)
 

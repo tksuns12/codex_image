@@ -29,52 +29,23 @@ Recommended path: install from a release artifact for your platform.
 
 ### From a release artifact
 
-Download the archive from the latest GitHub Release (or use snippets below). Replace `v0.1.0` with the release tag you want.
+Download and run the installer script for your platform. Each script resolves the newest GitHub Release tag automatically, downloads the matching archive, installs the binary, and verifies `codex-image --help`.
 
 #### Linux x86_64 / macOS x86_64 / macOS arm64
 
 ```bash
-REPO="tksuns12/codex_image"
-VERSION="v0.1.0"
-
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64) TARGET="x86_64-unknown-linux-gnu" ;;
-  Darwin-x86_64) TARGET="x86_64-apple-darwin" ;;
-  Darwin-arm64|Darwin-aarch64) TARGET="aarch64-apple-darwin" ;;
-  *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
-esac
-
-ASSET="codex-image-${VERSION}-${TARGET}.tar.gz"
-TMPDIR="$(mktemp -d)"
-curl -L "https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}" -o "${TMPDIR}/${ASSET}"
-tar -xzf "${TMPDIR}/${ASSET}" -C "${TMPDIR}"
-mkdir -p "${HOME}/.local/bin"
-install -m 0755 "${TMPDIR}/codex-image-${VERSION}-${TARGET}/codex-image" "${HOME}/.local/bin/codex-image"
-
-codex-image --help
+curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh
 ```
 
-Make sure `${HOME}/.local/bin` is on your `PATH`.
+The script installs to `${HOME}/.local/bin` by default. Override with `CODEX_IMAGE_INSTALL_DIR=/path/to/bin` and make sure the install directory is on your `PATH`.
 
 #### Windows x86_64 PowerShell
 
 ```powershell
-$Repo = "tksuns12/codex_image"
-$Version = "v0.1.0"
-$Target = "x86_64-pc-windows-msvc"
-$Asset = "codex-image-$Version-$Target.zip"
-$TempDir = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "codex-image-install")
-$ZipPath = Join-Path $TempDir $Asset
-
-Invoke-WebRequest "https://github.com/$Repo/releases/download/$Version/$Asset" -OutFile $ZipPath
-Expand-Archive -Path $ZipPath -DestinationPath $TempDir -Force
-New-Item -ItemType Directory -Force -Path "$HOME\bin" | Out-Null
-Copy-Item "$TempDir\codex-image-$Version-$Target\codex-image.exe" "$HOME\bin\codex-image.exe" -Force
-
-codex-image --help
+Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression
 ```
 
-Make sure `$HOME\bin` is on your `PATH`.
+The script installs to `$HOME\bin` by default. Override with `$env:CODEX_IMAGE_INSTALL_DIR = "C:\path\to\bin"` before running it and make sure the install directory is on your `PATH`.
 
 ### From source (secondary path)
 

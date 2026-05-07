@@ -52,11 +52,11 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         readme,
         &[
             "cargo install --path .",
-            "releases/download/${VERSION}/${ASSET}",
-            "x86_64-unknown-linux-gnu",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-            "x86_64-pc-windows-msvc",
+            "raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh",
+            "raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1",
+            "curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh",
+            "Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression",
+            "CODEX_IMAGE_INSTALL_DIR",
             "codex-image",
             "generate",
             "CODEX_IMAGE_CODEX_BIN",
@@ -66,6 +66,11 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
             "docs/skill-paths.md",
             "docs/uat-live-smoke.md",
         ],
+    );
+
+    assert!(
+        !readme.contains("VERSION=\"v0.1.0\"") && !readme.contains("$Version = \"v0.1.0\""),
+        "{label} install snippets must resolve the latest release instead of pinning v0.1.0"
     );
 
     assert!(
@@ -259,11 +264,11 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         readme,
         &[
             "cargo install --path .",
-            "releases/download/${VERSION}/${ASSET}",
-            "x86_64-unknown-linux-gnu",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-            "x86_64-pc-windows-msvc",
+            "raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh",
+            "raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1",
+            "curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh",
+            "Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression",
+            "CODEX_IMAGE_INSTALL_DIR",
             "codex-image",
             "generate",
             "CODEX_IMAGE_CODEX_BIN",
@@ -275,12 +280,16 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
     );
 
     assert!(
+        !readme.contains("VERSION=\"v0.1.0\"") && !readme.contains("$Version = \"v0.1.0\""),
+        "{label} install snippets must resolve the latest release instead of pinning v0.1.0"
+    );
+
+    assert!(
         readme.contains("Codex CLI") || readme.contains("Codex 설치"),
         "{label} must document the Codex dependency"
     );
     assert!(
-        readme.contains("Codex 확장")
-            || (readme.contains("VS Code") && readme.contains("Cursor")),
+        readme.contains("Codex 확장") || (readme.contains("VS Code") && readme.contains("Cursor")),
         "{label} must mention Codex extension install locations as a prerequisite"
     );
     assert!(
@@ -326,12 +335,7 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         "## 사전 요구 사항: Codex CLI / Codex 확장",
         "## 설치",
     );
-    assert_before(
-        label,
-        readme,
-        "## 설치",
-        "## 이미지와 매니페스트 생성",
-    );
+    assert_before(label, readme, "## 설치", "## 이미지와 매니페스트 생성");
     assert_before(
         label,
         readme,
@@ -420,11 +424,44 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
 
 #[test]
 fn install_uat_docs_scripts_document_codex_backend_and_live_guard() {
+    let install_label = "install-latest script";
+    let install_ps1_label = "install-latest PowerShell script";
     let verify_label = "verify-local-install script";
     let live_label = "live UAT script";
 
+    let install_latest = include_str!("../scripts/install-latest.sh");
+    let install_latest_ps1 = include_str!("../scripts/install-latest.ps1");
     let verify_local_install = include_str!("../scripts/verify-local-install.sh");
     let uat_live_smoke = include_str!("../scripts/uat-live-smoke.sh");
+
+    assert_all_present(
+        install_label,
+        install_latest,
+        &[
+            "#!/usr/bin/env sh",
+            "https://api.github.com/repos/${REPO}/releases/latest",
+            "could not resolve latest codex-image release",
+            "x86_64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+            "releases/download/${VERSION}/${ASSET}",
+            "CODEX_IMAGE_INSTALL_DIR",
+            "--help >/dev/null",
+        ],
+    );
+    assert_all_present(
+        install_ps1_label,
+        install_latest_ps1,
+        &[
+            "Invoke-RestMethod $ApiUrl",
+            "could not resolve latest codex-image release",
+            "x86_64-pc-windows-msvc",
+            "releases/download/$Version/$Asset",
+            "CODEX_IMAGE_INSTALL_DIR",
+            "codex-image.exe",
+            "--help",
+        ],
+    );
 
     must_contain(verify_label, verify_local_install, "generate --help");
     must_contain(live_label, uat_live_smoke, "CODEX_IMAGE_RUN_LIVE=1");
@@ -447,7 +484,11 @@ fn install_uat_docs_uat_doc_describes_codex_only_backend() {
     let label = "UAT runbook";
     let runbook = include_str!("../docs/uat-live-smoke.md");
 
-    assert_all_present(label, runbook, &["Codex", "generate", "CODEX_IMAGE_CODEX_BIN"]);
+    assert_all_present(
+        label,
+        runbook,
+        &["Codex", "generate", "CODEX_IMAGE_CODEX_BIN"],
+    );
 
     assert_all_absent(
         label,
