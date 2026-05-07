@@ -9,15 +9,36 @@ use codex_image::skills::{resolve_skill_path, SkillScope, SupportedTool};
 use tempfile::tempdir;
 
 #[test]
-fn skill_installer_content_includes_frontmatter_and_core_sections() {
+fn skill_installer_content_includes_frontmatter_and_required_headings() {
     let body = render_skill_body();
 
-    assert!(body.starts_with("---\nname: codex-image\n"));
-    assert!(body.ends_with('\n'));
-    assert!(body.contains("description:"));
-    assert!(body.contains("## Command guidance"));
-    assert!(body.contains("## Supported tools"));
-    assert!(body.contains("## Prompting guide"));
+    assert!(
+        body.starts_with("---\nname: codex-image\n"),
+        "skill body must start with codex-image frontmatter"
+    );
+    assert!(body.ends_with('\n'), "skill body must end with trailing newline");
+    assert!(
+        body.contains("description:"),
+        "skill body must include frontmatter description"
+    );
+
+    for heading in [
+        "## Command guidance",
+        "## Supported tools",
+        "## Prompting guide",
+        "## Prompt workflow",
+        "## Generate checklist",
+        "## Edit and preserve checklist",
+        "## Text in images",
+        "## Multi-image references",
+        "## Iteration loop",
+        "## Guardrails",
+    ] {
+        assert!(
+            body.contains(heading),
+            "skill body must include required heading: {heading}"
+        );
+    }
 }
 
 #[test]
@@ -25,20 +46,26 @@ fn skill_installer_content_includes_prompting_checklist_concepts() {
     let body = render_skill_body().to_ascii_lowercase();
 
     for phrase in [
-        "use this skill",
+        "intended use",
+        "subject",
         "composition",
         "framing",
         "viewpoint",
         "lighting",
-        "exact text",
+        "style",
+        "labeled segments",
         "constraints",
         "invariants",
-        "multi-image",
-        "index",
-        "description",
+        "one line",
+        "change only the requested element",
+        "exact text in double quotes",
+        "placement",
+        "typography",
+        "reference each input by index",
+        "controls subject/style/layout",
         "single-change",
-        "follow-up",
-        "iteration",
+        "scoped and reversible",
+        "project-controlled directories",
     ] {
         assert!(
             body.contains(phrase),
@@ -51,7 +78,10 @@ fn skill_installer_content_includes_prompting_checklist_concepts() {
 fn skill_installer_content_includes_expected_command_guidance() {
     let body = render_skill_body();
 
-    assert!(body.contains("codex-image generate \"<prompt>\" --out <dir>"));
+    assert!(
+        body.contains("codex-image generate \"<prompt>\" --out <dir>"),
+        "skill body must describe the generate command: codex-image generate \"<prompt>\" --out <dir>"
+    );
     assert!(
         body.contains(
             "codex-image skill install --tool <claude|claude-code|codex|pi|opencode> --scope <global|project> --yes"
@@ -82,14 +112,26 @@ fn skill_installer_content_lists_all_supported_tool_slugs() {
 #[test]
 fn skill_installer_content_contains_prompting_guide_url() {
     let body = render_skill_body();
-    assert!(body.contains(
-        "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide"
-    ));
+    let guide_url =
+        "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide";
+
+    assert!(
+        body.contains(guide_url),
+        "skill body must retain official OpenAI prompting guide URL: {guide_url}"
+    );
 }
 
 #[test]
 fn skill_installer_content_excludes_banned_auth_and_api_strings() {
     let managed = render_managed_skill_content();
+    let managed_lower = managed.to_ascii_lowercase();
+    let guide_url =
+        "https://developers.openai.com/cookbook/examples/multimodal/image-gen-models-prompting-guide";
+
+    assert!(
+        managed.contains(guide_url),
+        "managed skill content must keep official guide URL even while enforcing banned-token checks"
+    );
 
     for banned in [
         "OPENAI_API_KEY",
@@ -99,11 +141,13 @@ fn skill_installer_content_excludes_banned_auth_and_api_strings() {
         "oauth",
         "api key",
         "Bearer ",
+        "curl",
+        "python",
+        "Image API",
+        "Responses API",
     ] {
         assert!(
-            !managed
-                .to_ascii_lowercase()
-                .contains(&banned.to_ascii_lowercase()),
+            !managed_lower.contains(&banned.to_ascii_lowercase()),
             "managed skill content must not include banned token: {banned}"
         );
     }
@@ -114,10 +158,25 @@ fn skill_installer_content_is_deterministic_bytes_and_checksum() {
     let first = render_managed_skill_content();
     let second = render_managed_skill_content();
 
-    assert_eq!(first.as_bytes(), second.as_bytes());
+    assert_eq!(
+        first.as_bytes(),
+        second.as_bytes(),
+        "managed render must be byte-stable across calls"
+    );
 
     let body = render_skill_body();
     let expected_marker = managed_marker_line(body);
+
+    let first_byte = first
+        .as_bytes()
+        .first()
+        .copied()
+        .expect("managed content must not be empty");
+    assert_eq!(
+        first_byte,
+        b'-',
+        "managed content byte 1 must begin frontmatter markdown"
+    );
 
     let first_line = first.lines().next().expect("first line exists");
     assert_eq!(first_line, "---", "managed skill must start with frontmatter");
@@ -126,17 +185,43 @@ fn skill_installer_content_is_deterministic_bytes_and_checksum() {
         "managed skill content must end with a trailing newline"
     );
 
+    let marker_lines: Vec<_> = first
+        .lines()
+        .filter(|line| line.starts_with("<!-- codex-image:managed checksum="))
+        .collect();
+    assert_eq!(
+        marker_lines.len(),
+        1,
+        "managed content must include exactly one checksum marker"
+    );
+
     let actual_marker = first
         .lines()
         .last()
         .expect("marker line exists at end of file");
-    assert_eq!(actual_marker, expected_marker);
+    assert_eq!(
+        actual_marker, expected_marker,
+        "managed checksum marker must be final line"
+    );
 
     let marker_checksum = actual_marker
         .strip_prefix("<!-- codex-image:managed checksum=")
         .and_then(|value| value.strip_suffix(" -->"))
         .expect("marker must use stable checksum shape");
-    assert_eq!(marker_checksum, managed_checksum(body));
+    assert_eq!(
+        marker_checksum.len(),
+        16,
+        "checksum marker must contain 16 hex digits"
+    );
+    assert!(
+        marker_checksum.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "checksum marker must contain only ASCII hex digits"
+    );
+    assert_eq!(
+        marker_checksum,
+        managed_checksum(body),
+        "marker checksum must equal managed_checksum(render_skill_body())"
+    );
 }
 
 #[test]
