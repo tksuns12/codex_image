@@ -13,10 +13,38 @@ fn skill_installer_content_includes_frontmatter_and_core_sections() {
     let body = render_skill_body();
 
     assert!(body.starts_with("---\nname: codex-image\n"));
+    assert!(body.ends_with('\n'));
     assert!(body.contains("description:"));
     assert!(body.contains("## Command guidance"));
     assert!(body.contains("## Supported tools"));
     assert!(body.contains("## Prompting guide"));
+}
+
+#[test]
+fn skill_installer_content_includes_prompting_checklist_concepts() {
+    let body = render_skill_body().to_ascii_lowercase();
+
+    for phrase in [
+        "use this skill",
+        "composition",
+        "framing",
+        "viewpoint",
+        "lighting",
+        "exact text",
+        "constraints",
+        "invariants",
+        "multi-image",
+        "index",
+        "description",
+        "single-change",
+        "follow-up",
+        "iteration",
+    ] {
+        assert!(
+            body.contains(phrase),
+            "skill body must retain checklist concept phrase: {phrase}"
+        );
+    }
 }
 
 #[test]
@@ -93,6 +121,10 @@ fn skill_installer_content_is_deterministic_bytes_and_checksum() {
 
     let first_line = first.lines().next().expect("first line exists");
     assert_eq!(first_line, "---", "managed skill must start with frontmatter");
+    assert!(
+        first.ends_with('\n'),
+        "managed skill content must end with a trailing newline"
+    );
 
     let actual_marker = first
         .lines()
@@ -136,7 +168,10 @@ fn skill_installer_content_classifies_missing_manual_outdated_current_and_tamper
         SkillContentClassification::ManagedCurrent
     );
 
-    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (previous)");
+    let outdated_body = render_skill_body().replace(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in checked-in workspace directories.",
+    );
     let outdated = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
     assert_eq!(
         classify_skill_content(Some(&outdated)),
@@ -286,7 +321,10 @@ fn skill_installer_filesystem_updates_valid_managed_outdated_content() {
         project.path(),
     );
 
-    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (old)");
+    let outdated_body = render_skill_body().replace(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in checked-in workspace directories.",
+    );
     let outdated = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
 
     let parent = plan.target_path().parent().expect("parent directory");
