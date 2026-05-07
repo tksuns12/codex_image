@@ -1,7 +1,9 @@
 use std::fs;
 
 use assert_cmd::Command;
-use codex_image::skill_installer::{managed_marker_line, render_skill_body};
+use codex_image::skill_installer::{
+    managed_marker_line, render_managed_skill_content, render_skill_body,
+};
 use serde_json::Value;
 use tempfile::tempdir;
 
@@ -66,11 +68,7 @@ fn skill_install_cli_project_install_then_repeat_is_created_then_unchanged() {
     );
 
     let written = fs::read_to_string(&expected_path).expect("skill file should be written");
-    assert!(written.starts_with("---\n"));
-    assert!(
-        written.contains("\n<!-- codex-image:managed checksum="),
-        "managed marker should still be embedded for update classification"
-    );
+    assert_eq!(written, render_managed_skill_content());
 
     let mut second = Command::cargo_bin("codex-image").expect("binary exists");
     let second_output = second
@@ -89,6 +87,10 @@ fn skill_install_cli_project_install_then_repeat_is_created_then_unchanged() {
     assert!(second_output.status.success());
     let second_json = parse_json_line(second_output.stdout);
     assert_eq!(second_json["status"], "unchanged");
+    assert_eq!(
+        fs::read_to_string(&expected_path).expect("skill file should remain readable"),
+        render_managed_skill_content()
+    );
 }
 
 #[test]
@@ -155,11 +157,7 @@ fn skill_install_cli_blocks_manual_edit_by_default_and_force_overwrites() {
     assert_eq!(forced_json["status"], "forced_overwrite");
 
     let overwritten = fs::read_to_string(&target).expect("manual file should be overwritten");
-    assert!(overwritten.starts_with("---\n"));
-    assert!(
-        overwritten.contains("\n<!-- codex-image:managed checksum="),
-        "managed marker should still be embedded for update classification"
-    );
+    assert_eq!(overwritten, render_managed_skill_content());
     assert!(!overwritten.contains("Bearer not-for-output"));
 }
 
@@ -234,6 +232,16 @@ fn skill_install_cli_multi_target_repeated_flags_emit_deterministic_json_lines()
 
     assert!(expected_global.is_file());
     assert!(expected_project.is_file());
+
+    let expected_content = render_managed_skill_content();
+    assert_eq!(
+        fs::read_to_string(&expected_global).expect("global skill should be readable"),
+        expected_content
+    );
+    assert_eq!(
+        fs::read_to_string(&expected_project).expect("project skill should be readable"),
+        expected_content
+    );
 }
 
 #[test]
@@ -386,7 +394,11 @@ fn skill_install_cli_update_updates_outdated_managed_file_then_noops_when_curren
         .join("codex-image")
         .join("SKILL.md");
 
-    let outdated_body = render_skill_body().replace("## Guardrails", "## Guardrails (old)");
+    let outdated_body = render_skill_body().replacen(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in local working directories.",
+        1,
+    );
     let outdated_content = format!("{}\n{}", managed_marker_line(&outdated_body), outdated_body);
     fs::write(&target, outdated_content).expect("seed outdated managed content");
 
@@ -411,6 +423,10 @@ fn skill_install_cli_update_updates_outdated_managed_file_then_noops_when_curren
     );
     let first_update_json = parse_json_line(first_update_output.stdout);
     assert_eq!(first_update_json["status"], "updated");
+    assert_eq!(
+        fs::read_to_string(&target).expect("updated target should be readable"),
+        render_managed_skill_content()
+    );
 
     let mut second_update = Command::cargo_bin("codex-image").expect("binary exists");
     let second_update_output = second_update
@@ -528,4 +544,8 @@ fn skill_install_cli_global_scope_writes_under_home_directory() {
         Some(expected_path.to_string_lossy().as_ref())
     );
     assert!(expected_path.is_file());
+    assert_eq!(
+        fs::read_to_string(&expected_path).expect("global skill should be readable"),
+        render_managed_skill_content()
+    );
 }
