@@ -98,8 +98,6 @@ Expected output from that single command:
 - `manifest.json` in `./out`
 - the same manifest JSON printed to stdout
 
-Under the hood, `codex-image` runs `codex exec`, asks Codex to use its built-in image tool, reads Codex's final JSON response, and copies the generated image into your output directory.
-
 Example stdout shape:
 
 ```json
@@ -122,17 +120,14 @@ Example stdout shape:
 }
 ```
 
+## After your first run
+
+If your first command produced `image-0001.<format>` and `manifest.json`, you're done with the quickstart.
+The sections below are optional follow-up material for agent automation, skill maintenance, and binary updates.
+
+If you're curious about execution details: `codex-image` runs `codex exec`, asks Codex to use its built-in image tool, reads Codex's final JSON response, and copies the generated image into your output directory.
+
 ## Agent skill install/update guide
-
-Reader: a fresh human or AI agent landing in this repository for the first time.
-Post-read action: pick the right tool + scope, run `codex-image skill install` / `codex-image skill update` non-interactively when needed, and validate binary update behavior safely.
-
-Section order:
-1. Supported tools and canonical path matrix link.
-2. Interactive and deterministic install commands.
-3. Skill update behavior and tamper protection.
-4. Agent auto-install prompt.
-5. Binary update behavior and no-live verification posture.
 
 ### Supported tools (install targets)
 
