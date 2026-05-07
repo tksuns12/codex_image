@@ -112,10 +112,10 @@ quickstart 이후 작업이 필요하면 아래를 사용하세요.
 codex-image skill install --tool codex --scope project --yes
 codex-image skill update --tool codex --scope project --yes
 codex-image update --dry-run
-codex-image update --yes
-codex-image update --version v1.2.3 --yes
+codex-image update
+codex-image update --version v1.2.3
 ```
 
-자동화에서는 `--tool`, `--scope`를 명시하고, 실제 교체 전에는 `codex-image update --dry-run`으로 비변경 미리보기를 권장합니다.
+자동화에서는 스킬 명령에 `--tool`, `--scope`를 명시하고, 실제 교체 전에는 `codex-image update --dry-run`으로 비변경 미리보기를 권장합니다.
 
 상세 운영 절차(스킬 상호작용 설치, 보호 대상 처리, no-live/라이브 검증 등)는 [docs/advanced-reference.md](docs/advanced-reference.md)를 기준 문서로 사용하세요.

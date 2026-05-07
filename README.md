@@ -112,8 +112,8 @@ Fast command reference:
 codex-image skill install --tool codex --scope project --yes
 codex-image skill update --tool codex --scope project --yes
 codex-image update --dry-run
-codex-image update --yes
-codex-image update --version v1.2.3 --yes
+codex-image update
+codex-image update --version v1.2.3
 ```
 
-Keep using explicit `--tool` and `--scope` values for automation. Use `codex-image update --dry-run` before replacement when you want a non-mutating preview.
+Keep using explicit `--tool` and `--scope` values for skill automation. Use `codex-image update --dry-run` before replacement when you want a non-mutating preview.
