@@ -199,8 +199,11 @@ fn skill_install_ux_interactive_options_mark_installed_states_and_defaults() {
         .join("codex-image")
         .join("SKILL.md");
     std::fs::create_dir_all(codex_global_path.parent().expect("parent")).expect("create parent");
-    let outdated_body = codex_image::skill_installer::render_skill_body()
-        .replace("## Guardrails", "## Guardrails (old)");
+    let outdated_body = codex_image::skill_installer::render_skill_body().replacen(
+        "Keep outputs in project-controlled directories.",
+        "Keep outputs in local working directories.",
+        1,
+    );
     let outdated = format!(
         "{}\n{}",
         codex_image::skill_installer::managed_marker_line(&outdated_body),
