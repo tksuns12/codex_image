@@ -268,16 +268,8 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
             "generate",
             "CODEX_IMAGE_CODEX_BIN",
             "README.md",
-            "Space",
-            "Enter",
-            "--scope project",
-            "--scope global",
-            "--yes",
-            "--force",
-            "codex-image update --dry-run",
-            "codex-image update --yes",
-            "--version v1.2.3",
-            "GitHub Release artifacts",
+            "docs/advanced-reference.md",
+            "docs/skill-paths.md",
             "docs/uat-live-smoke.md",
         ],
     );
@@ -309,12 +301,16 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
             "codex-image generate \"도서관에서 책을 읽는 수채화풍 여우\" --out ./out",
             "image-0001.<format>",
             "manifest.json",
-            "## 에이전트 스킬 설치/업데이트 가이드",
-            "docs/skill-paths.md",
+            "## 첫 실행 후",
+            "## 첫 실행 이후 참고 자료 (선택)",
             "codex-image skill install --tool",
             "codex-image skill update --tool",
-            "## 환경 변수",
-            "## 검증 스크립트",
+            "codex-image update --dry-run",
+            "codex-image update --yes",
+            "--version v1.2.3",
+            "docs/advanced-reference.md",
+            "docs/skill-paths.md",
+            "docs/uat-live-smoke.md",
         ],
     );
 
@@ -335,6 +331,18 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         readme,
         "## 설치",
         "## 이미지와 매니페스트 생성",
+    );
+    assert_before(
+        label,
+        readme,
+        "## 이미지와 매니페스트 생성",
+        "## 첫 실행 후",
+    );
+    assert_before(
+        label,
+        readme,
+        "## 첫 실행 후",
+        "## 첫 실행 이후 참고 자료 (선택)",
     );
     assert_before(
         label,
@@ -368,16 +376,15 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
     );
 
     let secondary_markers = [
-        "## 에이전트 스킬 설치/업데이트 가이드",
+        "## 첫 실행 이후 참고 자료 (선택)",
+        "docs/advanced-reference.md",
         "docs/skill-paths.md",
         "codex-image skill install --tool",
         "codex-image skill update --tool",
         "codex-image update --dry-run",
         "codex-image update --yes",
         "--version v1.2.3",
-        "GitHub Release artifacts",
         "docs/uat-live-smoke.md",
-        "## 검증 스크립트",
     ];
 
     assert_secondary_markers_after_first_success(
@@ -387,28 +394,19 @@ fn install_uat_docs_korean_readme_covers_install_usage_and_codex_backend() {
         &secondary_markers,
     );
 
-    assert_before(
-        label,
-        readme,
-        "## 에이전트 스킬 설치/업데이트 가이드",
-        "## 환경 변수",
-    );
-    assert_before(label, readme, "## 환경 변수", "## 검증 스크립트");
-
-    assert!(
-        (readme.contains("no live GitHub downloads")
-            || readme.contains("GitHub 다운로드를 라이브로 수행하지 않습니다"))
-            && (readme.contains("no live Codex generation")
-                || readme.contains("Codex 생성은 라이브로 수행하지 않습니다"))
-            && (readme.contains("no credentials") || readme.contains("자격 증명을 요구하지 않습니다"))
-            && (readme.contains("no auth mutation") || readme.contains("인증 상태를 변경하지 않습니다")),
-        "{label} must keep no-live verification statements"
-    );
-
     assert_all_absent(
         label,
         readme,
         &[
+            "## 에이전트 스킬 설치/업데이트 가이드",
+            "## 환경 변수",
+            "## 검증 스크립트",
+            "Space",
+            "Enter",
+            "no live GitHub downloads",
+            "no live Codex generation",
+            "no credentials",
+            "no auth mutation",
             "actions/workflows/release.yml/badge.svg?branch=release",
             "release-please",
             "Release / Preflight",
