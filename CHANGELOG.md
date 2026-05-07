@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/tksuns12/codex-image/compare/v0.2.0...v0.2.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **update:** apply latest release by default ([93b83e4](https://github.com/tksuns12/codex-image/commit/93b83e4c8d37c63ccba2029240a4f7dc48768449))
+
 ## [0.2.0](https://github.com/tksuns12/codex_image/compare/v0.1.0...v0.2.0) (2026-05-06)
 
 
