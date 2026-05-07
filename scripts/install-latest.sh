@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO="${CODEX_IMAGE_REPO:-tksuns12/codex_image}"
+REPO="${CODEX_IMAGE_REPO:-tksuns12/codex-image}"
 INSTALL_DIR="${CODEX_IMAGE_INSTALL_DIR:-$HOME/.local/bin}"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
