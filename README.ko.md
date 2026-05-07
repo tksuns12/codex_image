@@ -34,7 +34,7 @@ Codex는 이미 로그인되어 있어야 하며, 내장 이미지 생성 도구
 #### Linux x86_64 / macOS x86_64 / macOS arm64
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tksuns12/codex-image/release/scripts/install-latest.sh | sh
 ```
 
 기본 설치 위치는 `${HOME}/.local/bin`입니다. `CODEX_IMAGE_INSTALL_DIR=/path/to/bin`으로 바꿀 수 있으며, 설치 디렉터리가 `PATH`에 포함되어 있어야 합니다.
@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/tksuns12/codex_image/release/script
 #### Windows x86_64 PowerShell
 
 ```powershell
-Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex_image/release/scripts/install-latest.ps1 | Invoke-Expression
+Invoke-RestMethod https://raw.githubusercontent.com/tksuns12/codex-image/release/scripts/install-latest.ps1 | Invoke-Expression
 ```
 
 기본 설치 위치는 `$HOME\bin`입니다. 실행 전에 `$env:CODEX_IMAGE_INSTALL_DIR = "C:\path\to\bin"`으로 바꿀 수 있으며, 설치 디렉터리가 `PATH`에 포함되어 있어야 합니다.

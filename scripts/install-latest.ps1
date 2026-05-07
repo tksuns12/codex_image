@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:CODEX_IMAGE_REPO) { $env:CODEX_IMAGE_REPO } else { "tksuns12/codex_image" }
+$Repo = if ($env:CODEX_IMAGE_REPO) { $env:CODEX_IMAGE_REPO } else { "tksuns12/codex-image" }
 $InstallDir = if ($env:CODEX_IMAGE_INSTALL_DIR) { $env:CODEX_IMAGE_INSTALL_DIR } else { Join-Path $HOME "bin" }
 $ApiUrl = "https://api.github.com/repos/$Repo/releases/latest"
 

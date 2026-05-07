@@ -24,7 +24,7 @@ use crate::updater::{
 };
 
 const GPT_IMAGE_MODEL: &str = "gpt-image-2";
-const UPDATE_REPOSITORY: &str = "tksuns12/codex_image";
+const UPDATE_REPOSITORY: &str = "tksuns12/codex-image";
 
 #[derive(Debug, Parser)]
 #[command(name = "codex-image", version, about = "Codex Image CLI")]
