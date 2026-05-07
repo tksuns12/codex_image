@@ -4,14 +4,16 @@
 
 `codex-image` is a small CLI that asks an installed Codex CLI to generate an image with Codex's built-in image tool, then copies the result into a requested output directory and writes a manifest.
 
+If you are new, read this page in order: verify Codex prerequisites, install `codex-image`, run one generation command, then confirm the output files/stdout.
+
 It does **not** implement its own OpenAI OAuth flow, does **not** call URL-configured image API endpoints, and does **not** read or mutate Codex auth files. Codex itself owns login and image generation access.
 
 ## Prerequisite: Codex CLI / Codex extensions
 
-`codex-image generate` depends on a working Codex installation.
+`codex-image generate` depends on a working Codex installation that can already generate images.
 
 - The standalone Codex CLI is currently **macOS-only**.
-- Codex installs provided by VS Code/Cursor extensions are also supported and work fine for `codex-image generate`.
+- Codex installs provided by **VS Code**/**Cursor** extensions are also supported for `codex-image generate`.
 
 Executable resolution order:
 
@@ -23,9 +25,11 @@ Codex must already be logged in and able to use its built-in image generation to
 
 ## Install
 
+Recommended path: install from a release artifact for your platform.
+
 ### From a release artifact
 
-Download the archive for your platform from the latest GitHub Release, or use one of the snippets below. Replace `v0.1.0` with the release tag you want to install.
+Download the archive from the latest GitHub Release (or use snippets below). Replace `v0.1.0` with the release tag you want.
 
 #### Linux x86_64 / macOS x86_64 / macOS arm64
 
@@ -72,9 +76,9 @@ codex-image --help
 
 Make sure `$HOME\bin` is on your `PATH`.
 
-### From source
+### From source (secondary path)
 
-Use this for local development or when you intentionally want to install the current checkout instead of a published release.
+Use this only when you intentionally want to install from the current checkout (for local development/testing).
 
 ```bash
 cargo install --path . --force
@@ -83,20 +87,18 @@ codex-image --help
 
 ## Generate images + manifest
 
-Run a generation with an output directory:
+Run one generation with an output directory:
 
 ```bash
 codex-image generate "A watercolor fox reading in a library" --out ./out
 ```
 
-The command:
+Expected output from that single command:
+- an image file named `image-0001.<format>` in `./out`
+- `manifest.json` in `./out`
+- the same manifest JSON printed to stdout
 
-1. Spawns `codex exec`.
-2. Instructs Codex to use its built-in image generation tool.
-3. Reads Codex's final JSON response containing the generated image path.
-4. Copies the generated file into `--out` as `image-0001.<format>`.
-5. Writes `manifest.json` under `--out`.
-6. Prints the manifest JSON to stdout.
+Under the hood, `codex-image` runs `codex exec`, asks Codex to use its built-in image tool, reads Codex's final JSON response, and copies the generated image into your output directory.
 
 Example stdout shape:
 
