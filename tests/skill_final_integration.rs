@@ -34,6 +34,12 @@ fn parse_json_lines(bytes: &[u8]) -> Vec<Value> {
         .collect()
 }
 
+fn parse_single_json_line(bytes: &[u8]) -> Value {
+    let lines = parse_json_lines(bytes);
+    assert_eq!(lines.len(), 1, "expected exactly one JSON line");
+    lines.into_iter().next().expect("one JSON line must exist")
+}
+
 fn expected_targets(home_dir: &Path, project_root: &Path) -> Vec<ExpectedTarget> {
     let mut targets = Vec::new();
     for tool in SupportedTool::all() {
@@ -92,6 +98,32 @@ fn run_skill_command(
         .arg("project")
         .arg("--yes")
         .env("HOME", home_dir);
+
+    cmd.output().expect("command should run")
+}
+
+fn run_single_target_skill_command(
+    project_root: &Path,
+    home_dir: &Path,
+    operation: &str,
+    tool: &str,
+    scope: &str,
+    force: bool,
+) -> std::process::Output {
+    let mut cmd = Command::cargo_bin("codex-image").expect("binary exists");
+    cmd.current_dir(project_root)
+        .arg("skill")
+        .arg(operation)
+        .arg("--tool")
+        .arg(tool)
+        .arg("--scope")
+        .arg(scope)
+        .arg("--yes")
+        .env("HOME", home_dir);
+
+    if force {
+        cmd.arg("--force");
+    }
 
     cmd.output().expect("command should run")
 }
@@ -236,4 +268,160 @@ fn skill_final_integration_cli_installs_openai_aligned_managed_skill_for_all_sup
             target.path.display()
         );
     }
+}
+
+#[test]
+fn skill_final_integration_update_blocks_manual_edit_redacts_stderr_and_force_overwrites() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+    let target = resolve_skill_path(
+        SupportedTool::Pi,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+    let manual_content = "# custom skill\nBearer not-for-output\n";
+    fs::write(&target, manual_content).expect("seed manual content");
+    let before_bytes = fs::read(&target).expect("manual content should be readable");
+
+    let blocked_output = run_single_target_skill_command(
+        project.path(),
+        home.path(),
+        "update",
+        "pi",
+        "project",
+        false,
+    );
+
+    assert_eq!(blocked_output.status.code(), Some(5));
+    assert!(blocked_output.stdout.is_empty());
+
+    let blocked_json = parse_single_json_line(&blocked_output.stderr);
+    assert_eq!(
+        blocked_json["error"]["code"],
+        "filesystem.skill_update_blocked_manual_edit"
+    );
+
+    let blocked_stderr = String::from_utf8(blocked_output.stderr).expect("stderr should be utf-8");
+    assert!(
+        !blocked_stderr.contains("Bearer not-for-output"),
+        "stderr must redact secret-like marker"
+    );
+
+    let preserved_bytes = fs::read(&target).expect("manual content should still be readable");
+    assert_eq!(
+        preserved_bytes, before_bytes,
+        "blocked update should preserve exact manual bytes"
+    );
+
+    let forced_output = run_single_target_skill_command(
+        project.path(),
+        home.path(),
+        "update",
+        "pi",
+        "project",
+        true,
+    );
+
+    assert!(
+        forced_output.status.success(),
+        "forced update stderr: {}",
+        String::from_utf8_lossy(&forced_output.stderr)
+    );
+    assert!(forced_output.stderr.is_empty());
+
+    let forced_json = parse_single_json_line(&forced_output.stdout);
+    assert_eq!(forced_json["tool"], "pi");
+    assert_eq!(forced_json["scope"], "project");
+    assert_eq!(forced_json["status"], "forced_overwrite");
+    assert_eq!(
+        forced_json["target_path"].as_str(),
+        Some(target.to_string_lossy().as_ref())
+    );
+
+    let overwritten = fs::read_to_string(&target).expect("forced target should be readable");
+    assert_eq!(overwritten, render_managed_skill_content());
+    assert!(!overwritten.contains("Bearer not-for-output"));
+}
+
+#[test]
+fn skill_final_integration_install_blocks_tampered_marker_by_default_and_force_overwrites() {
+    let project = tempdir().expect("project tempdir");
+    let home = tempdir().expect("home tempdir");
+    let target = resolve_skill_path(
+        SupportedTool::Codex,
+        SkillScope::ProjectLocal,
+        home.path(),
+        project.path(),
+    );
+
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+    let tampered_content =
+        "<!-- codex-image:managed checksum=deadbeefdeadbeef -->\n# custom skill\nBearer not-for-output\n";
+    fs::write(&target, tampered_content).expect("seed tampered content");
+    let before_bytes = fs::read(&target).expect("tampered content should be readable");
+
+    let blocked_output = run_single_target_skill_command(
+        project.path(),
+        home.path(),
+        "install",
+        "codex",
+        "project",
+        false,
+    );
+
+    assert_eq!(blocked_output.status.code(), Some(5));
+    assert!(
+        blocked_output.stdout.is_empty(),
+        "blocked install must not emit partial success lines"
+    );
+
+    let blocked_json = parse_single_json_line(&blocked_output.stderr);
+    assert_eq!(
+        blocked_json["error"]["code"],
+        "filesystem.skill_install_blocked_manual_edit"
+    );
+
+    let blocked_stderr = String::from_utf8(blocked_output.stderr).expect("stderr should be utf-8");
+    assert!(
+        !blocked_stderr.contains("Bearer not-for-output"),
+        "stderr must redact secret-like marker"
+    );
+
+    let preserved_bytes = fs::read(&target).expect("tampered content should still be readable");
+    assert_eq!(
+        preserved_bytes, before_bytes,
+        "blocked install should preserve exact existing bytes"
+    );
+
+    let forced_output = run_single_target_skill_command(
+        project.path(),
+        home.path(),
+        "install",
+        "codex",
+        "project",
+        true,
+    );
+
+    assert!(
+        forced_output.status.success(),
+        "forced install stderr: {}",
+        String::from_utf8_lossy(&forced_output.stderr)
+    );
+    assert!(forced_output.stderr.is_empty());
+
+    let forced_json = parse_single_json_line(&forced_output.stdout);
+    assert_eq!(forced_json["tool"], "codex");
+    assert_eq!(forced_json["scope"], "project");
+    assert_eq!(forced_json["status"], "forced_overwrite");
+    assert_eq!(
+        forced_json["target_path"].as_str(),
+        Some(target.to_string_lossy().as_ref())
+    );
+
+    let overwritten = fs::read_to_string(&target).expect("forced target should be readable");
+    assert_eq!(overwritten, render_managed_skill_content());
+    assert!(!overwritten.contains("Bearer not-for-output"));
 }
