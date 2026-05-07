@@ -88,6 +88,94 @@ fn install_uat_docs_readme_covers_install_usage_and_codex_backend() {
         "{label} must mention Codex extension install locations as a prerequisite"
     );
 
+    assert_all_present(
+        label,
+        readme,
+        &[
+            "`codex-image` is a small CLI",
+            "## Prerequisite: Codex CLI / Codex extensions",
+            "macOS-only",
+            "VS Code/Cursor",
+            "Codex must already be logged in and able to use its built-in image generation tool.",
+            "## Install",
+            "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+            "image-0001.<format>",
+            "manifest.json",
+            "## Agent skill install/update guide",
+            "codex-image skill install --tool",
+            "codex-image update --dry-run",
+            "docs/uat-live-smoke.md",
+            "## Verification scripts",
+        ],
+    );
+
+    assert_before(
+        label,
+        readme,
+        "`codex-image` is a small CLI",
+        "## Prerequisite: Codex CLI / Codex extensions",
+    );
+    assert_before(
+        label,
+        readme,
+        "## Prerequisite: Codex CLI / Codex extensions",
+        "## Install",
+    );
+    assert_before(
+        label,
+        readme,
+        "macOS-only",
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "VS Code/Cursor",
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "Codex must already be logged in and able to use its built-in image generation tool.",
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "CODEX_IMAGE_CODEX_BIN",
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+    );
+
+    assert_before(
+        label,
+        readme,
+        "## Install",
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+    );
+    assert_before(
+        label,
+        readme,
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+        "image-0001.<format>",
+    );
+    assert_before(
+        label,
+        readme,
+        "codex-image generate \"A watercolor fox reading in a library\" --out ./out",
+        "manifest.json",
+    );
+
+    for advanced_marker in [
+        "## Agent skill install/update guide",
+        "codex-image skill install --tool",
+        "codex-image update --dry-run",
+        "docs/uat-live-smoke.md",
+        "## Verification scripts",
+    ] {
+        assert_before(label, readme, "image-0001.<format>", advanced_marker);
+        assert_before(label, readme, "manifest.json", advanced_marker);
+    }
+
     assert_all_absent(
         label,
         readme,

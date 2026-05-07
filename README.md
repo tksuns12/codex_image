@@ -6,6 +6,21 @@
 
 It does **not** implement its own OpenAI OAuth flow, does **not** call URL-configured image API endpoints, and does **not** read or mutate Codex auth files. Codex itself owns login and image generation access.
 
+## Prerequisite: Codex CLI / Codex extensions
+
+`codex-image generate` depends on a working Codex installation.
+
+- The standalone Codex CLI is currently **macOS-only**.
+- Codex installs provided by VS Code/Cursor extensions are also supported and work fine for `codex-image generate`.
+
+Executable resolution order:
+
+1. `CODEX_IMAGE_CODEX_BIN` when set.
+2. `codex` on `PATH`.
+3. Common VS Code/Cursor Codex extension install locations.
+
+Codex must already be logged in and able to use its built-in image generation tool.
+
 ## Install
 
 ### From a release artifact
@@ -65,21 +80,6 @@ Use this for local development or when you intentionally want to install the cur
 cargo install --path . --force
 codex-image --help
 ```
-
-## Prerequisite: Codex CLI / Codex extensions
-
-`codex-image generate` depends on a working Codex installation.
-
-- The standalone Codex CLI is currently **macOS-only**.
-- Codex installs provided by VS Code/Cursor extensions are also supported and work fine for `codex-image generate`.
-
-Executable resolution order:
-
-1. `CODEX_IMAGE_CODEX_BIN` when set.
-2. `codex` on `PATH`.
-3. Common VS Code/Cursor Codex extension install locations.
-
-Codex must already be logged in and able to use its built-in image generation tool.
 
 ## Generate images + manifest
 
